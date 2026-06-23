@@ -40,3 +40,12 @@ npm run build
 ## 문서
 
 프로젝트 상세 스펙은 [CLAUDE.md](./CLAUDE.md)를 참고하세요.
+
+## 최근 수정 (2026-06)
+
+- PPTX 추출: `spTree` 기준 텍스트 도형 수집, 화면텍스트 JSON 파싱
+- 나레이션: 하단 좌표(y≥0.78) + 좌표 없는 플레이스홀더 도형 텍스트 패턴 폴백
+- 추출 UI: 배치 저장·진행률 표시로 대용량 PPTX 처리 시 멈춤 방지
+- 로그인: `signInWithPassword` 직후 세션 반영
+
+배포: [elearning-translator.vercel.app](https://elearning-translator.vercel.app)

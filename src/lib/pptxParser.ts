@@ -94,25 +94,35 @@ function extractShapes(spTree: Element): RawShape[] {
   const shapes: RawShape[] = []
 
   for (const sp of elementsByLocalName(spTree, 'sp')) {
-    const xfrm = firstChildByLocalName(sp, 'xfrm')
-    if (!xfrm) continue
-
-    const off = firstChildByLocalName(xfrm, 'off')
-    const ext = firstChildByLocalName(xfrm, 'ext')
-    if (!off || !ext) continue
-
     const txBody = firstChildByLocalName(sp, 'txBody')
     if (!txBody) continue
 
     const text = extractBodyText(txBody)
     if (!text) continue
 
+    let x = 0
+    let y = 0
+    let w = 0
+    let h = 0
+
+    const xfrm = firstChildByLocalName(sp, 'xfrm')
+    if (xfrm) {
+      const off = firstChildByLocalName(xfrm, 'off')
+      const ext = firstChildByLocalName(xfrm, 'ext')
+      if (off && ext) {
+        x = attrInt(off, 'x')
+        y = attrInt(off, 'y')
+        w = attrInt(ext, 'cx')
+        h = attrInt(ext, 'cy')
+      }
+    }
+
     shapes.push({
       text,
-      x: attrInt(off, 'x'),
-      y: attrInt(off, 'y'),
-      w: attrInt(ext, 'cx'),
-      h: attrInt(ext, 'cy'),
+      x,
+      y,
+      w,
+      h,
       fontSize: extractFontSize(txBody),
     })
   }
@@ -180,14 +190,62 @@ function isNarration(x: number, y: number, _w: number, _h: number): boolean {
   return yR >= 0.74 && yR < 0.86 && xR < 0.15
 }
 
+/** 제작 지시(애니메이션/연출) 문구 — 나레이션 본문이 아님 */
+function isDirectorNote(text: string): boolean {
+  const t = text.trim()
+  if (!t) return true
+  if (/^jv\d/i.test(t) || /^[\d,\sjv]+$/i.test(t)) return true
+  if (/사운드\s*스트리밍|스트리밍\s*동안/i.test(t)) return true
+  if (/다이어그램\s*전체\s*제시/i.test(t)) return true
+  if (/텍스트.*이미지.*제시|이미지.*텍스트.*제시/i.test(t)) return true
+  if (/강조효과|화살표.*함께|연결선.*함께/i.test(t)) return true
+  if (/차례로\s*제시|행별\s*내용\s*차례로/i.test(t)) return true
+  if (/영역\s*구분선\s*함께/i.test(t)) return true
+  if (t.length < 80 && /제시/.test(t) && !/PLC|제어|학습|산업|현대|생산|피드백|시퀀스/.test(t)) {
+    return true
+  }
+  return false
+}
+
+function isNarrationCandidate(text: string): boolean {
+  const t = text.trim()
+  if (!/^#\d/.test(t)) return false
+  if (t.length < 40) return false
+  return !isDirectorNote(t)
+}
+
+/** 좌표가 (0,0)인 나레이션 박스 — 위치 기반 분류 실패 시 텍스트 패턴으로 보완 */
+function findFallbackNarration(shapes: RawShape[]): string | null {
+  const candidates = shapes.filter(
+    (s) =>
+      isNarrationCandidate(s.text) &&
+      !isScreen(s.x, s.y, s.w, s.h) &&
+      !isScreenDesc(s.x, s.y, s.w, s.h) &&
+      !isMenu(s.x, s.y, s.w, s.h),
+  )
+  if (candidates.length === 0) return null
+
+  const atOrigin = candidates.filter((s) => s.x === 0 && s.y === 0)
+  const pool = atOrigin.length > 0 ? atOrigin : candidates
+
+  return (
+    pool
+      .slice()
+      .sort((a, b) => b.text.length - a.text.length)[0]
+      ?.text.trim() || null
+  )
+}
+
 function classifySlideType(shapes: RawShape[], slideNum: number): SlideType {
   const topTxt = shapes
     .filter((s) => isScreenNum(s.x, s.y, s.w, s.h))
     .map((s) => s.text)
     .join(' ')
 
+  const anyTxt = shapes.map((s) => s.text).join(' ')
+
   if (slideNum <= 9) return 'guide'
-  if (topTxt.includes('간지')) return 'divider'
+  if (topTxt.includes('간지') || anyTxt.includes('간지')) return 'divider'
   if (topTxt.includes('INTRO') || /\d{2}_01\b/.test(topTxt)) return 'intro'
   if (topTxt.includes('OUTRO') || topTxt.includes('아웃트로')) return 'outro'
   if (topTxt.includes('적용하기')) return 'apply'
@@ -280,7 +338,9 @@ function parseSlideXml(xml: string, slideNum: number): ParsedSlide | null {
     narShapes
       .map((s) => s.text)
       .join('\n')
-      .trim() || null
+      .trim() ||
+    findFallbackNarration(shapes) ||
+    null
 
   const courseName =
     cnShapes

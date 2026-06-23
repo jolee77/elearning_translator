@@ -34,7 +34,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 ### slides
 - `id`, `project_id`, `slide_num`, `slide_type`, `screen_num`, `course_name`, `chapter_name`
 - `current_section` (목차 — `menu_text` 아님)
-- `screen_text` (JSONB), `screen_desc`, `image_nums` (`image_num` 아님), `narration`, `created_at`
+- `screen_text` (text — JSON 문자열), `screen_desc`, `image_nums` (`image_num` 아님), `narration`, `created_at`
 
 ### spelling_results
 - `id`, `project_id`, `slide_id`, `field`, `original`, `suggestion`, `applied`, `created_at`
@@ -95,13 +95,25 @@ isMenu:        x/CX < 0.25 && y/CY >= 0.08 && y/CY < 0.78  // 좌측 목차
 isScreen:      x/CX >= 0.13 && x/CX < 0.75 && y/CY >= 0.08 && y/CY < 0.78
 isScreenDesc:  x/CX >= 0.75 && y/CY < 0.63   // 우측 화면설명
 isImageNum:    x/CX >= 0.75 && y/CY >= 0.63 && y/CY < 0.78
-isNarration:   y/CY >= 0.78                   // 하단 나레이션
+isNarration:   y/CY >= 0.78                   // 하단 나레이션 (또는 y 0.74~0.86 && x < 0.15)
 ```
+
+### 좌표 없는 플레이스홀더 나레이션 (슬라이드 19~28 등)
+일부 슬라이드는 나레이션 도형에 `<p:spPr/>`(xfrm 없음)만 있고 좌표가 비어 있다.
+- `extractShapes`: xfrm/off/ext가 없어도 텍스트가 있으면 `(0,0)` 좌표로 수집
+- 위치 기반 `isNarration` 실패 시 `findFallbackNarration`으로 보완
+  - `#1`로 시작, 40자 이상
+  - 연출 지시 문구(「텍스트·이미지 함께 제시」, 사운드 스트리밍 등)는 `isDirectorNote`로 제외
+  - 후보가 여러 개면 가장 긴 본문을 나레이션으로 선택
+
+### screen_text 저장 형식
+DB 컬럼 `slides.screen_text`는 **text** 타입이며 JSON 문자열로 저장된다.
+읽기/쓰기 시 `normalizeScreenText()` / `serializeScreenTextForDb()`로 배열 ↔ 문자열 변환.
 
 슬라이드 타입 분류:
 - guide: slideNum <= 9 (가이드 슬라이드, 처리 제외)
 - intro: 화면번호에 'INTRO' 또는 '01' 패턴
-- divider: '간지' 포함
+- divider: 화면번호 또는 슬라이드 내 임의 텍스트에 '간지' 포함 (예: 슬라이드 29)
 - outro: 'OUTRO' 또는 '아웃트로'
 - quiz: '문제풀기'
 - apply: '적용하기'
