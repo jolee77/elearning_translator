@@ -253,19 +253,41 @@ function sortSlidePaths(paths: string[]): string[] {
   })
 }
 
-export async function parsePptx(data: ArrayBuffer | Blob): Promise<ParsedSlide[]> {
+function yieldToMainThread(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0)
+  })
+}
+
+export interface ParseProgress {
+  current: number
+  total: number
+  phase: 'parsing' | 'saving'
+}
+
+export async function parsePptx(
+  data: ArrayBuffer | Blob,
+  onProgress?: (progress: ParseProgress) => void,
+): Promise<ParsedSlide[]> {
   const zip = await JSZip.loadAsync(data)
   const slidePaths = sortSlidePaths(
     Object.keys(zip.files).filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path)),
   )
 
   const slides: ParsedSlide[] = []
+  const total = slidePaths.length
 
   for (let i = 0; i < slidePaths.length; i++) {
     const slideNum = i + 1
     const xml = await zip.file(slidePaths[i])!.async('string')
     const parsed = parseSlideXml(xml, slideNum)
     if (parsed) slides.push(parsed)
+
+    onProgress?.({ current: i + 1, total, phase: 'parsing' })
+
+    if (i % 3 === 2) {
+      await yieldToMainThread()
+    }
   }
 
   return slides
@@ -282,9 +304,12 @@ export const SLIDE_TYPE_LABELS: Record<SlideType, string> = {
   content: '콘텐츠',
 }
 
-export function formatScreenText(boxes: SlideTextBox[] | null): string {
-  if (!boxes?.length) return ''
-  return boxes.map((b) => b.text).join('\n')
+export function formatScreenText(boxes: SlideTextBox[] | null | unknown): string {
+  if (!Array.isArray(boxes) || boxes.length === 0) return ''
+  return boxes
+    .map((box) => (typeof box === 'object' && box && 'text' in box ? String(box.text ?? '') : ''))
+    .filter(Boolean)
+    .join('\n')
 }
 
 export function parseScreenTextInput(

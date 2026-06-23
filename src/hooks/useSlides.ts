@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { parsePptx } from '../lib/pptxParser'
+import { parsePptx, type ParseProgress, type ParsedSlide } from '../lib/pptxParser'
 import { supabase } from '../lib/supabase'
-import type { ParsedSlide } from '../lib/pptxParser'
 import type { Slide } from '../types'
 import { STORAGE_BUCKET } from './useProject'
 import { useAuth } from './useAuth'
 
 const slidesQueryKey = ['slides'] as const
+const INSERT_BATCH_SIZE = 25
+
+export type { ParseProgress }
 
 export type SlideInsert = Omit<Slide, 'id' | 'created_at'>
 export type SlideUpdate = Partial<
@@ -52,6 +54,32 @@ function toSlideRows(projectId: string, parsed: ParsedSlide[]): SlideInsert[] {
   }))
 }
 
+async function insertSlideRows(
+  rows: SlideInsert[],
+  onProgress?: (progress: ParseProgress) => void,
+): Promise<Slide[]> {
+  const inserted: Slide[] = []
+  const total = rows.length
+
+  for (let i = 0; i < rows.length; i += INSERT_BATCH_SIZE) {
+    const batch = rows.slice(i, i + INSERT_BATCH_SIZE)
+    const { data, error } = await supabase.from('slides').insert(batch).select()
+
+    if (error) throw error
+    inserted.push(...data)
+
+    onProgress?.({
+      current: Math.min(i + batch.length, total),
+      total,
+      phase: 'saving',
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+
+  return inserted
+}
+
 export function useExtractSlides() {
   const queryClient = useQueryClient()
 
@@ -59,12 +87,14 @@ export function useExtractSlides() {
     mutationFn: async ({
       projectId,
       storagePath,
+      onProgress,
     }: {
       projectId: string
       storagePath: string
+      onProgress?: (progress: ParseProgress) => void
     }): Promise<Slide[]> => {
       const buffer = await downloadPptx(storagePath)
-      const parsed = await parsePptx(buffer)
+      const parsed = await parsePptx(buffer, onProgress)
       const rows = toSlideRows(projectId, parsed)
 
       const { error: deleteError } = await supabase
@@ -76,10 +106,7 @@ export function useExtractSlides() {
 
       if (rows.length === 0) return []
 
-      const { data, error } = await supabase.from('slides').insert(rows).select()
-
-      if (error) throw error
-      return data
+      return insertSlideRows(rows, onProgress)
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...slidesQueryKey, variables.projectId] })
