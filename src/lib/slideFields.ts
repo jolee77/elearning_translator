@@ -1,4 +1,5 @@
 import type { Slide } from '../types'
+import { normalizeScreenText } from './pptxParser'
 
 type SlideUpdate = Partial<
   Omit<Slide, 'id' | 'project_id' | 'slide_num' | 'created_at'>
@@ -13,21 +14,25 @@ export function applyFieldCorrection(
     return { narration: correctedText }
   }
 
+  const screenText = normalizeScreenText(slide.screen_text)
+
   if (fieldKey.startsWith('screen_text_')) {
     const boxId = fieldKey.replace('screen_text_', '')
-    const screenText = slide.screen_text ? [...slide.screen_text] : []
-    const idx = screenText.findIndex((box, index) => (box.id || String(index)) === boxId)
+    if (!screenText?.length) return {}
+
+    const boxes = [...screenText]
+    const idx = boxes.findIndex((box, index) => (box.id || String(index)) === boxId)
 
     if (idx >= 0) {
-      screenText[idx] = { ...screenText[idx], text: correctedText }
-      return { screen_text: screenText }
+      boxes[idx] = { ...boxes[idx], text: correctedText }
+      return { screen_text: boxes }
     }
   }
 
-  if (fieldKey === 'screen_text' && slide.screen_text?.length) {
-    const screenText = [...slide.screen_text]
-    screenText[0] = { ...screenText[0], text: correctedText }
-    return { screen_text: screenText }
+  if (fieldKey === 'screen_text' && screenText?.length) {
+    const boxes = [...screenText]
+    boxes[0] = { ...boxes[0], text: correctedText }
+    return { screen_text: boxes }
   }
 
   return {}

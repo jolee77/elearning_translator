@@ -368,9 +368,39 @@ export const SLIDE_TYPE_LABELS: Record<SlideType, string> = {
   content: '콘텐츠',
 }
 
-export function formatScreenText(boxes: SlideTextBox[] | null | unknown): string {
-  if (!Array.isArray(boxes) || boxes.length === 0) return ''
-  return boxes
+export function normalizeScreenText(raw: SlideTextBox[] | string | null | unknown): SlideTextBox[] | null {
+  if (raw == null) return null
+
+  if (Array.isArray(raw)) {
+    return raw.length > 0 ? (raw as SlideTextBox[]) : null
+  }
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed || trimmed === 'null') return null
+
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown
+        if (Array.isArray(parsed)) {
+          return parsed.length > 0 ? (parsed as SlideTextBox[]) : null
+        }
+      } catch {
+        // plain text fallback
+      }
+    }
+
+    return [{ id: '0', text: trimmed, x: 0, y: 0, w: 0, h: 0 }]
+  }
+
+  return null
+}
+
+export function formatScreenText(boxes: SlideTextBox[] | string | null | unknown): string {
+  const normalized = normalizeScreenText(boxes)
+  if (!normalized?.length) return ''
+
+  return normalized
     .map((box) => (typeof box === 'object' && box && 'text' in box ? String(box.text ?? '') : ''))
     .filter(Boolean)
     .join('\n')
@@ -378,13 +408,15 @@ export function formatScreenText(boxes: SlideTextBox[] | null | unknown): string
 
 export function parseScreenTextInput(
   value: string,
-  existing: SlideTextBox[] | null,
+  existing: SlideTextBox[] | string | null,
 ): SlideTextBox[] | null {
   const trimmed = value.trim()
   if (!trimmed) return null
 
-  if (existing?.length) {
-    const [first, ...rest] = existing
+  const normalizedExisting = normalizeScreenText(existing)
+
+  if (normalizedExisting?.length) {
+    const [first, ...rest] = normalizedExisting
     return [
       { ...first, text: trimmed },
       ...rest.map((box) => ({ ...box, text: '' })),

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { parsePptx, type ParseProgress, type ParsedSlide } from '../lib/pptxParser'
+import { parsePptx, normalizeScreenText, type ParseProgress, type ParsedSlide } from '../lib/pptxParser'
 import { supabase } from '../lib/supabase'
 import type { Slide } from '../types'
 import { STORAGE_BUCKET } from './useProject'
@@ -15,6 +15,22 @@ export type SlideUpdate = Partial<
   Omit<Slide, 'id' | 'project_id' | 'slide_num' | 'created_at'>
 >
 
+function normalizeSlide(slide: Slide): Slide {
+  return {
+    ...slide,
+    screen_text: normalizeScreenText(slide.screen_text),
+  }
+}
+
+function normalizeSlides(slides: Slide[]): Slide[] {
+  return slides.map(normalizeSlide)
+}
+
+function serializeScreenTextForDb(boxes: Slide['screen_text']): string | null {
+  if (!boxes?.length) return null
+  return JSON.stringify(boxes)
+}
+
 export function useSlides(projectId: string | undefined) {
   return useQuery({
     queryKey: [...slidesQueryKey, projectId],
@@ -26,7 +42,7 @@ export function useSlides(projectId: string | undefined) {
         .order('slide_num', { ascending: true })
 
       if (error) throw error
-      return data
+      return normalizeSlides(data)
     },
     enabled: !!projectId,
   })
@@ -47,7 +63,7 @@ function toSlideRows(projectId: string, parsed: ParsedSlide[]): SlideInsert[] {
     course_name: slide.course_name,
     chapter_name: slide.chapter_name,
     current_section: slide.current_section,
-    screen_text: slide.screen_text,
+    screen_text: serializeScreenTextForDb(slide.screen_text) as unknown as SlideInsert['screen_text'],
     screen_desc: slide.screen_desc,
     image_nums: slide.image_nums,
     narration: slide.narration,
@@ -66,7 +82,7 @@ async function insertSlideRows(
     const { data, error } = await supabase.from('slides').insert(batch).select()
 
     if (error) throw error
-    inserted.push(...data)
+    inserted.push(...normalizeSlides(data))
 
     onProgress?.({
       current: Math.min(i + batch.length, total),
@@ -137,12 +153,20 @@ export function useUpsertSlides() {
       const { data, error } = await supabase.from('slides').insert(slides).select()
 
       if (error) throw error
-      return data
+      return normalizeSlides(data)
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...slidesQueryKey, variables.projectId] })
     },
   })
+}
+
+function prepareSlideUpdateForDb(updates: SlideUpdate): Record<string, unknown> {
+  if (updates.screen_text === undefined) return updates
+  return {
+    ...updates,
+    screen_text: serializeScreenTextForDb(updates.screen_text ?? null),
+  }
 }
 
 export function useUpdateSlide() {
@@ -160,13 +184,13 @@ export function useUpdateSlide() {
     }): Promise<Slide> => {
       const { data, error } = await supabase
         .from('slides')
-        .update(updates)
+        .update(prepareSlideUpdateForDb(updates))
         .eq('id', id)
         .select()
         .single()
 
       if (error) throw error
-      return data
+      return normalizeSlide(data)
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...slidesQueryKey, variables.projectId] })
@@ -196,7 +220,7 @@ export function useBulkUpdateSlides() {
             course_name: slide.course_name,
             chapter_name: slide.chapter_name,
             current_section: slide.current_section,
-            screen_text: slide.screen_text,
+            screen_text: serializeScreenTextForDb(slide.screen_text),
             screen_desc: slide.screen_desc,
             image_nums: slide.image_nums,
             narration: slide.narration,
@@ -206,7 +230,7 @@ export function useBulkUpdateSlides() {
           .single()
 
         if (error) throw error
-        results.push(data)
+        results.push(normalizeSlide(data))
       }
 
       return results
@@ -264,7 +288,7 @@ export function useCompleteExtraction() {
           .update({
             slide_type: slide.slide_type,
             screen_num: slide.screen_num,
-            screen_text: slide.screen_text,
+            screen_text: serializeScreenTextForDb(slide.screen_text),
             narration: slide.narration,
           })
           .eq('id', slide.id)
