@@ -74,7 +74,7 @@ export interface Settings {
 
 export interface Project {
   id: string
-  user_id: string
+  created_by: string
   title: string
   status: ProjectStatus
   ko_pptx_path: string | null

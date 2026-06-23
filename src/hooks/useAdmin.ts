@@ -175,7 +175,7 @@ export function useAllProjects() {
       if (projectsError) throw projectsError
       if (!projects.length) return []
 
-      const userIds = [...new Set(projects.map((p) => p.user_id))]
+      const userIds = [...new Set(projects.map((p) => p.created_by))]
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('id, name, email')
@@ -187,7 +187,7 @@ export function useAllProjects() {
 
       return projects.map((project) => ({
         ...project,
-        creator: profileMap.get(project.user_id) ?? null,
+        creator: profileMap.get(project.created_by) ?? null,
       }))
     },
   })

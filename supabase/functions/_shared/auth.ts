@@ -71,7 +71,7 @@ export async function verifyProjectAccess(
 ): Promise<void> {
   const { data: project, error: projectError } = await serviceClient
     .from('projects')
-    .select('user_id')
+    .select('created_by')
     .eq('id', projectId)
     .maybeSingle()
 
@@ -83,7 +83,7 @@ export async function verifyProjectAccess(
     throw new HttpError(404, '프로젝트를 찾을 수 없습니다.')
   }
 
-  if (project.user_id === userId) return
+  if (project.created_by === userId) return
 
   const { data: profile, error: profileError } = await serviceClient
     .from('profiles')

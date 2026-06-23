@@ -20,7 +20,7 @@ export function useProjects() {
       const { data, error } = await supabase
         .from('projects')
         .select('*')
-        .eq('user_id', user!.id)
+        .eq('created_by', user!.id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -71,7 +71,7 @@ export function useCreateProject() {
       const { data: project, error: createError } = await supabase
         .from('projects')
         .insert({
-          user_id: user.id,
+          created_by: user.id,
           title,
           status: 'uploaded',
           target_lang: input.targetLang,
