@@ -117,6 +117,7 @@ function collectTextShapes(parent: Element, offsetX = 0, offsetY = 0): TextShape
 function isNarrationBox(x: number, y: number): boolean {
   const xR = x / SB_CX
   const yR = y / SB_CY
+  if (yR >= 0.78) return true
   return yR >= 0.74 && yR < 0.86 && xR < 0.15
 }
 

@@ -17,17 +17,7 @@ export interface ParsedSlide {
   narration: string | null
 }
 
-type RegionKey =
-  | 'screen_num'
-  | 'course_name'
-  | 'chapter_name'
-  | 'menu'
-  | 'screen'
-  | 'screen_desc'
-  | 'image_num'
-  | 'narration'
-
-interface RawTextBox {
+interface RawShape {
   text: string
   x: number
   y: number
@@ -35,6 +25,18 @@ interface RawTextBox {
   h: number
   fontSize?: number
 }
+
+const MENU_SECTION_LABELS = new Set([
+  '학습열기',
+  '학습목표',
+  '학습내용',
+  '문제풀기',
+  '적용하기',
+  '핵심 쏙!쏙! 편집 스킬 UP',
+  '학습내용1',
+  '학습내용2',
+  '참고자료',
+])
 
 function elementsByLocalName(root: Element, localName: string): Element[] {
   const result: Element[] = []
@@ -87,108 +89,141 @@ function extractFontSize(txBody: Element): number | undefined {
   return val ? parseInt(val, 10) / 100 : undefined
 }
 
-function getShapeTransform(shape: Element): { x: number; y: number; w: number; h: number } {
-  const xfrm =
-    firstChildByLocalName(shape, 'xfrm') ??
-    (() => {
-      const spPr = firstChildByLocalName(shape, 'spPr')
-      return spPr ? firstChildByLocalName(spPr, 'xfrm') : null
+/** HTML extractShapes와 동일: spTree 하위 모든 sp를 개별 좌표로 수집 */
+function extractShapes(spTree: Element): RawShape[] {
+  const shapes: RawShape[] = []
+
+  for (const sp of elementsByLocalName(spTree, 'sp')) {
+    const xfrm = firstChildByLocalName(sp, 'xfrm')
+    if (!xfrm) continue
+
+    const off = firstChildByLocalName(xfrm, 'off')
+    const ext = firstChildByLocalName(xfrm, 'ext')
+    if (!off || !ext) continue
+
+    const txBody = firstChildByLocalName(sp, 'txBody')
+    if (!txBody) continue
+
+    const text = extractBodyText(txBody)
+    if (!text) continue
+
+    shapes.push({
+      text,
+      x: attrInt(off, 'x'),
+      y: attrInt(off, 'y'),
+      w: attrInt(ext, 'cx'),
+      h: attrInt(ext, 'cy'),
+      fontSize: extractFontSize(txBody),
+    })
+  }
+
+  for (const frame of elementsByLocalName(spTree, 'graphicFrame')) {
+    const table = firstChildByLocalName(frame, 'tbl')
+    if (!table) continue
+
+    const { x, y, w, h } = (() => {
+      const xfrm = firstChildByLocalName(frame, 'xfrm')
+      const off = xfrm ? firstChildByLocalName(xfrm, 'off') : null
+      const ext = xfrm ? firstChildByLocalName(xfrm, 'ext') : null
+      return {
+        x: attrInt(off, 'x'),
+        y: attrInt(off, 'y'),
+        w: attrInt(ext, 'cx'),
+        h: attrInt(ext, 'cy'),
+      }
     })()
 
-  const off = xfrm ? firstChildByLocalName(xfrm, 'off') : null
-  const ext = xfrm ? firstChildByLocalName(xfrm, 'ext') : null
-
-  return {
-    x: attrInt(off, 'x'),
-    y: attrInt(off, 'y'),
-    w: attrInt(ext, 'cx'),
-    h: attrInt(ext, 'cy'),
-  }
-}
-
-function extractTextBoxes(
-  parent: Element,
-  offsetX = 0,
-  offsetY = 0,
-): RawTextBox[] {
-  const boxes: RawTextBox[] = []
-
-  for (const child of Array.from(parent.children)) {
-    if (!(child instanceof Element)) continue
-
-    const tag = child.localName
-
-    if (tag === 'sp') {
-      const txBody = firstChildByLocalName(child, 'txBody')
+    for (const tc of elementsByLocalName(table, 'tc')) {
+      const txBody = firstChildByLocalName(tc, 'txBody')
       if (!txBody) continue
-
       const text = extractBodyText(txBody)
       if (!text) continue
-
-      const { x, y, w, h } = getShapeTransform(child)
-      boxes.push({
-        text,
-        x: x + offsetX,
-        y: y + offsetY,
-        w,
-        h,
-        fontSize: extractFontSize(txBody),
-      })
-    } else if (tag === 'grpSp') {
-      const { x, y } = getShapeTransform(child)
-      boxes.push(...extractTextBoxes(child, offsetX + x, offsetY + y))
+      shapes.push({ text, x, y, w, h })
     }
   }
 
-  return boxes
+  return shapes
 }
 
-function classifyRegion(x: number, y: number, w: number, _h: number): RegionKey | null {
+function isScreenNum(x: number, y: number, w: number, _h: number): boolean {
+  return x / SB_CX > 0.79 && y / SB_CY < 0.12 && w / SB_CX < 0.2
+}
+
+function isCourseName(x: number, y: number, _w: number, _h: number): boolean {
+  return x / SB_CX > 0.1 && x / SB_CX < 0.5 && y / SB_CY >= 0.04 && y / SB_CY < 0.08
+}
+
+function isChapterName(x: number, y: number, _w: number, _h: number): boolean {
+  return x / SB_CX > 0.1 && x / SB_CX < 0.35 && y / SB_CY >= 0.08 && y / SB_CY < 0.15
+}
+
+function isMenu(x: number, y: number, _w: number, _h: number): boolean {
+  return x / SB_CX < 0.25 && y / SB_CY >= 0.08 && y / SB_CY < 0.78
+}
+
+function isScreen(x: number, y: number, _w: number, _h: number): boolean {
+  return x / SB_CX >= 0.13 && x / SB_CX < 0.75 && y / SB_CY >= 0.08 && y / SB_CY < 0.78
+}
+
+function isScreenDesc(x: number, y: number, _w: number, _h: number): boolean {
+  return x / SB_CX >= 0.75 && y / SB_CY < 0.63
+}
+
+function isImageNum(x: number, y: number, _w: number, _h: number): boolean {
+  return x / SB_CX >= 0.75 && y / SB_CY >= 0.63 && y / SB_CY < 0.78
+}
+
+function isNarration(x: number, y: number, _w: number, _h: number): boolean {
   const xR = x / SB_CX
   const yR = y / SB_CY
-  const wR = w / SB_CX
-
-  if (xR > 0.79 && yR < 0.12 && wR < 0.2) return 'screen_num'
-  if (xR > 0.1 && xR < 0.5 && yR >= 0.04 && yR < 0.08) return 'course_name'
-  if (xR > 0.1 && xR < 0.35 && yR >= 0.08 && yR < 0.15) return 'chapter_name'
-  // 하단 좌측 나레이션 박스 (실측 y≈0.776, x≈0.029 — 기존 0.78 기준보다 약간 위)
-  if (yR >= 0.74 && yR < 0.86 && xR < 0.15) return 'narration'
-  if (xR >= 0.75 && yR >= 0.63 && yR < 0.74) return 'image_num'
-  if (xR >= 0.75 && yR < 0.63) return 'screen_desc'
-  if (xR < 0.25 && yR >= 0.08 && yR < 0.74) return 'menu'
-  if (xR >= 0.13 && xR < 0.75 && yR >= 0.08 && yR < 0.78) return 'screen'
-  return null
+  if (yR >= 0.78) return true
+  return yR >= 0.74 && yR < 0.86 && xR < 0.15
 }
 
-function appendRegionText(map: Map<RegionKey, string[]>, key: RegionKey, text: string) {
-  const list = map.get(key) ?? []
-  list.push(text)
-  map.set(key, list)
-}
+function classifySlideType(shapes: RawShape[], slideNum: number): SlideType {
+  const topTxt = shapes
+    .filter((s) => isScreenNum(s.x, s.y, s.w, s.h))
+    .map((s) => s.text)
+    .join(' ')
 
-function joinRegion(map: Map<RegionKey, string[]>, key: RegionKey): string | null {
-  const texts = map.get(key)
-  if (!texts?.length) return null
-  return texts.join('\n').trim() || null
-}
-
-function classifySlideType(
-  slideNum: number,
-  screenNum: string | null,
-  allText: string,
-): SlideType {
   if (slideNum <= 9) return 'guide'
-
-  const sn = (screenNum ?? '').toUpperCase()
-  const combined = `${sn} ${allText}`
-
-  if (sn.includes('INTRO') || /^0?1(?:[_\s-]|$)/.test(sn)) return 'intro'
-  if (combined.includes('간지')) return 'divider'
-  if (sn.includes('OUTRO') || combined.includes('아웃트로')) return 'outro'
-  if (combined.includes('문제풀기')) return 'quiz'
-  if (combined.includes('적용하기')) return 'apply'
-  if (/\d{2}_\d{2}/.test(sn)) return 'lesson'
+  if (topTxt.includes('간지')) return 'divider'
+  if (topTxt.includes('INTRO') || /\d{2}_01\b/.test(topTxt)) return 'intro'
+  if (topTxt.includes('OUTRO') || topTxt.includes('아웃트로')) return 'outro'
+  if (topTxt.includes('적용하기')) return 'apply'
+  if (topTxt.includes('문제풀기')) return 'quiz'
+  if (/\d{2}_\d{2}/.test(topTxt)) return 'lesson'
   return 'content'
+}
+
+function pickCurrentSection(menuShapes: RawShape[]): string | null {
+  const menuTexts = menuShapes.map((s) => s.text.split('\n')[0]?.trim() ?? '').filter(Boolean)
+  if (menuTexts.length === 0) return null
+
+  const picked =
+    menuTexts.find((t) => t.startsWith('▶')) ??
+    menuTexts.find((t) => !MENU_SECTION_LABELS.has(t)) ??
+    menuTexts[0]
+
+  return picked.replace(/^▶\s*/, '').trim() || null
+}
+
+function toScreenBoxes(shapes: RawShape[]): SlideTextBox[] {
+  const menuShapes = shapes.filter((s) => isMenu(s.x, s.y, s.w, s.h))
+  const menuSet = new Set(menuShapes)
+
+  return shapes
+    .filter((s) => isScreen(s.x, s.y, s.w, s.h) && !menuSet.has(s))
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .map((s, index) => ({
+      id: String(index),
+      text: s.text,
+      x: s.x,
+      y: s.y,
+      w: s.w,
+      h: s.h,
+      font_size: s.fontSize,
+    }))
 }
 
 function findSpTree(root: Element): Element | null {
@@ -199,50 +234,78 @@ function findSpTree(root: Element): Element | null {
 
 function parseSlideXml(xml: string, slideNum: number): ParsedSlide | null {
   const doc = new DOMParser().parseFromString(xml, 'application/xml')
-  const root = doc.documentElement
-  const spTree = findSpTree(root)
-  const rawBoxes = spTree ? extractTextBoxes(spTree) : []
+  const spTree = findSpTree(doc.documentElement)
+  const shapes = spTree ? extractShapes(spTree) : []
 
-  const regionMap = new Map<RegionKey, string[]>()
-  const screenBoxes: SlideTextBox[] = []
-
-  rawBoxes.forEach((box, index) => {
-    const region = classifyRegion(box.x, box.y, box.w, box.h)
-
-    if (region === 'screen') {
-      screenBoxes.push({
-        id: String(index),
-        text: box.text,
-        x: box.x,
-        y: box.y,
-        w: box.w,
-        h: box.h,
-        font_size: box.fontSize,
-      })
-    } else if (region) {
-      appendRegionText(regionMap, region, box.text)
-    }
-  })
-
-  screenBoxes.sort((a, b) => a.y - b.y || a.x - b.x)
-
-  const screenNum = joinRegion(regionMap, 'screen_num')
-  const allText = rawBoxes.map((b) => b.text).join(' ')
-  const slideType = classifySlideType(slideNum, screenNum, allText)
-
+  const slideType = classifySlideType(shapes, slideNum)
   if (slideType === 'guide') return null
+
+  const snShapes = shapes.filter((s) => isScreenNum(s.x, s.y, s.w, s.h))
+  const cnShapes = shapes.filter((s) => isCourseName(s.x, s.y, s.w, s.h))
+  const chShapes = shapes.filter((s) => isChapterName(s.x, s.y, s.w, s.h))
+  const menuShapes = shapes.filter((s) => isMenu(s.x, s.y, s.w, s.h))
+  const descShapes = shapes.filter((s) => isScreenDesc(s.x, s.y, s.w, s.h))
+  const imgShapes = shapes.filter((s) => isImageNum(s.x, s.y, s.w, s.h))
+  const narShapes = shapes.filter((s) => isNarration(s.x, s.y, s.w, s.h))
+
+  const screenNum =
+    snShapes
+      .filter(
+        (s) =>
+          s.text.length < 15 && !s.text.includes('페이지') && !s.text.includes(')'),
+      )
+      .map((s) => s.text)
+      .join(' ')
+      .trim() || null
+
+  const screenDesc =
+    descShapes
+      .filter(
+        (s) => s.text !== '-' && !/^\d{2}_\d{2}$/.test(s.text) && s.y / SB_CY < 0.63,
+      )
+      .map((s) => s.text)
+      .join('\n')
+      .trim() || null
+
+  const imageNums =
+    imgShapes
+      .filter((s) => s.text !== '-')
+      .map((s) => s.text)
+      .join(', ')
+      .trim() || null
+
+  const screenBoxes = toScreenBoxes(shapes)
+
+  const narration =
+    narShapes
+      .map((s) => s.text)
+      .join('\n')
+      .trim() || null
+
+  const courseName =
+    cnShapes
+      .map((s) => s.text.split('\n')[0] ?? '')
+      .join(' ')
+      .trim() || null
+
+  const chapterName =
+    chShapes
+      .filter((s) => !cnShapes.includes(s))
+      .map((s) => s.text.split('\n')[0] ?? '')
+      .join(' ')
+      .trim() || null
 
   return {
     slide_num: slideNum,
     slide_type: slideType,
     screen_num: screenNum,
-    course_name: joinRegion(regionMap, 'course_name'),
-    chapter_name: joinRegion(regionMap, 'chapter_name'),
-    current_section: joinRegion(regionMap, 'menu'),
+    course_name: courseName,
+    chapter_name: chapterName,
+    current_section: pickCurrentSection(menuShapes),
     screen_text: screenBoxes.length > 0 ? screenBoxes : null,
-    screen_desc: joinRegion(regionMap, 'screen_desc'),
-    image_nums: joinRegion(regionMap, 'image_num'),
-    narration: joinRegion(regionMap, 'narration'),
+    screen_desc: screenDesc,
+    image_nums: imageNums,
+    narration,
   }
 }
 
