@@ -1,0 +1,312 @@
+// ─── 공통 ───────────────────────────────────────────────────────────────────
+
+export type UserRole = 'admin' | 'designer'
+
+export type ProjectStatus =
+  | 'uploaded'
+  | 'extracted'
+  | 'spelling'
+  | 'spelling_done'
+  | 'translating'
+  | 'translated'
+  | 'verifying'
+  | 'verified'
+  | 'expert_review'
+  | 'done'
+
+export type SlideType =
+  | 'guide'
+  | 'intro'
+  | 'divider'
+  | 'outro'
+  | 'quiz'
+  | 'apply'
+  | 'lesson'
+  | 'content'
+
+export type ExpertReviewStatus = 'pending' | 'in_progress' | 'done'
+
+export type ExpertReviewItemStatus = 'pending' | 'approved' | 'rejected'
+
+export type VerificationApplyStatus = 'pending' | 'applied' | 'skipped'
+
+export type ChangeLogAction =
+  | 'project_created'
+  | 'pptx_uploaded'
+  | 'extraction_done'
+  | 'spelling_applied'
+  | 'translation_done'
+  | 'verification_applied'
+  | 'expert_review_sent'
+  | 'expert_review_done'
+  | 'download'
+
+// ─── PPTX 추출 데이터 ───────────────────────────────────────────────────────
+
+export interface SlideTextBox {
+  id: string
+  text: string
+  x: number
+  y: number
+  w: number
+  h: number
+  font_size?: number
+}
+
+// ─── DB 테이블 ──────────────────────────────────────────────────────────────
+
+export interface Profile {
+  id: string
+  email: string
+  name: string
+  role: UserRole
+  created_at: string
+  updated_at: string
+}
+
+export interface Settings {
+  id: string
+  claude_api_key: string | null
+  updated_at: string
+  updated_by: string | null
+}
+
+export interface Project {
+  id: string
+  user_id: string
+  title: string
+  status: ProjectStatus
+  ko_pptx_path: string | null
+  vn_pptx_path: string | null
+  target_lang: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Slide {
+  id: string
+  project_id: string
+  slide_num: number
+  slide_type: SlideType
+  screen_num: string | null
+  course_name: string | null
+  chapter_name: string | null
+  menu_text: string | null
+  screen_text: SlideTextBox[] | null
+  screen_desc: string | null
+  image_num: string | null
+  narration: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SpellingResult {
+  id: string
+  project_id: string
+  slide_id: string
+  field_key: string
+  original_text: string
+  corrected_text: string
+  issues: SpellingIssue[] | null
+  applied: boolean
+  created_at: string
+}
+
+export interface SpellingIssue {
+  type: string
+  message: string
+  offset?: number
+  length?: number
+}
+
+export interface Translation {
+  id: string
+  project_id: string
+  slide_id: string
+  field_key: string
+  ko_text: string
+  vi_text: string
+  ko_cpm: number | null
+  vi_wpm: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Verification {
+  id: string
+  project_id: string
+  slide_id: string
+  translation_id: string
+  back_translation: string
+  similarity_score: number | null
+  issues: string | null
+  apply_status: VerificationApplyStatus
+  created_at: string
+}
+
+export interface ExpertReview {
+  id: string
+  project_id: string
+  token: string
+  status: ExpertReviewStatus
+  reviewer_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ExpertReviewItem {
+  id: string
+  expert_review_id: string
+  slide_id: string
+  translation_id: string
+  field_key: string
+  ko_text: string
+  vi_text: string
+  status: ExpertReviewItemStatus
+  comment: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChangeLog {
+  id: string
+  project_id: string
+  user_id: string | null
+  action: ChangeLogAction
+  detail: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
+// ─── Supabase Database 타입 ─────────────────────────────────────────────────
+
+type GenericRelationship = {
+  foreignKeyName: string
+  columns: string[]
+  isOneToOne?: boolean
+  referencedRelation: string
+  referencedColumns: string[]
+}
+
+type TableDef<Row, Insert, Update> = {
+  Row: Row
+  Insert: Insert
+  Update: Update
+  Relationships: GenericRelationship[]
+}
+
+export interface Database {
+  public: {
+    Tables: {
+      profiles: TableDef<
+        Profile,
+        Omit<Profile, 'created_at' | 'updated_at'> & {
+          created_at?: string
+          updated_at?: string
+        },
+        Partial<Omit<Profile, 'id'>>
+      >
+      settings: TableDef<
+        Settings,
+        Omit<Settings, 'id' | 'updated_at'> & {
+          id?: string
+          updated_at?: string
+        },
+        Partial<Omit<Settings, 'id'>>
+      >
+      projects: TableDef<
+        Project,
+        Omit<Project, 'id' | 'created_at' | 'updated_at'> & {
+          id?: string
+          created_at?: string
+          updated_at?: string
+        },
+        Partial<Omit<Project, 'id'>>
+      >
+      slides: TableDef<
+        Slide,
+        Omit<Slide, 'id' | 'created_at' | 'updated_at'> & {
+          id?: string
+          created_at?: string
+          updated_at?: string
+        },
+        Partial<Omit<Slide, 'id'>>
+      >
+      spelling_results: TableDef<
+        SpellingResult,
+        Omit<SpellingResult, 'id' | 'created_at'> & {
+          id?: string
+          created_at?: string
+        },
+        Partial<Omit<SpellingResult, 'id'>>
+      >
+      translations: TableDef<
+        Translation,
+        Omit<Translation, 'id' | 'created_at' | 'updated_at'> & {
+          id?: string
+          created_at?: string
+          updated_at?: string
+        },
+        Partial<Omit<Translation, 'id'>>
+      >
+      verifications: TableDef<
+        Verification,
+        Omit<Verification, 'id' | 'created_at'> & {
+          id?: string
+          created_at?: string
+        },
+        Partial<Omit<Verification, 'id'>>
+      >
+      expert_reviews: TableDef<
+        ExpertReview,
+        Omit<ExpertReview, 'id' | 'created_at' | 'updated_at'> & {
+          id?: string
+          created_at?: string
+          updated_at?: string
+        },
+        Partial<Omit<ExpertReview, 'id'>>
+      >
+      expert_review_items: TableDef<
+        ExpertReviewItem,
+        Omit<ExpertReviewItem, 'id' | 'created_at' | 'updated_at'> & {
+          id?: string
+          created_at?: string
+          updated_at?: string
+        },
+        Partial<Omit<ExpertReviewItem, 'id'>>
+      >
+      change_logs: TableDef<
+        ChangeLog,
+        Omit<ChangeLog, 'id' | 'created_at'> & {
+          id?: string
+          created_at?: string
+        },
+        Partial<Omit<ChangeLog, 'id'>>
+      >
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      get_expert_review_by_token: {
+        Args: { token: string }
+        Returns: ExpertReview
+      }
+      save_expert_review_item: {
+        Args: {
+          token: string
+          item_id: string
+          status: ExpertReviewItemStatus
+          comment?: string
+        }
+        Returns: ExpertReviewItem
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
