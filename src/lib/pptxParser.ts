@@ -151,10 +151,11 @@ function classifyRegion(x: number, y: number, w: number, _h: number): RegionKey 
   if (xR > 0.79 && yR < 0.12 && wR < 0.2) return 'screen_num'
   if (xR > 0.1 && xR < 0.5 && yR >= 0.04 && yR < 0.08) return 'course_name'
   if (xR > 0.1 && xR < 0.35 && yR >= 0.08 && yR < 0.15) return 'chapter_name'
-  if (yR >= 0.78) return 'narration'
-  if (xR >= 0.75 && yR >= 0.63 && yR < 0.78) return 'image_num'
+  // 하단 좌측 나레이션 박스 (실측 y≈0.776, x≈0.029 — 기존 0.78 기준보다 약간 위)
+  if (yR >= 0.74 && yR < 0.86 && xR < 0.15) return 'narration'
+  if (xR >= 0.75 && yR >= 0.63 && yR < 0.74) return 'image_num'
   if (xR >= 0.75 && yR < 0.63) return 'screen_desc'
-  if (xR < 0.25 && yR >= 0.08 && yR < 0.78) return 'menu'
+  if (xR < 0.25 && yR >= 0.08 && yR < 0.74) return 'menu'
   if (xR >= 0.13 && xR < 0.75 && yR >= 0.08 && yR < 0.78) return 'screen'
   return null
 }

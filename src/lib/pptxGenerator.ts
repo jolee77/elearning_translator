@@ -114,8 +114,10 @@ function collectTextShapes(parent: Element, offsetX = 0, offsetY = 0): TextShape
   return shapes
 }
 
-function isNarrationBox(y: number): boolean {
-  return y / SB_CY >= 0.78
+function isNarrationBox(x: number, y: number): boolean {
+  const xR = x / SB_CX
+  const yR = y / SB_CY
+  return yR >= 0.74 && yR < 0.86 && xR < 0.15
 }
 
 function isScreenTextBox(x: number, y: number, _w: number): boolean {
@@ -324,7 +326,7 @@ function processSlideXml(xml: string, slideNum: number, translations: Translatio
     const trimmed = info.text.trim()
     if (!trimmed) continue
 
-    if (isNarrationBox(info.y)) {
+    if (isNarrationBox(info.x, info.y)) {
       const tr = findTranslation(trimmed, 'narration', translations, usedTranslations)
       if (tr?.vi_text.trim()) {
         replaceNarrationShape(info.shape, doc, trimmed, tr.vi_text.trim())
