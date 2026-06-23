@@ -8,9 +8,9 @@ import { useAuth } from './useAuth'
 
 const slidesQueryKey = ['slides'] as const
 
-export type SlideInsert = Omit<Slide, 'id' | 'created_at' | 'updated_at'>
+export type SlideInsert = Omit<Slide, 'id' | 'created_at'>
 export type SlideUpdate = Partial<
-  Omit<Slide, 'id' | 'project_id' | 'slide_num' | 'created_at' | 'updated_at'>
+  Omit<Slide, 'id' | 'project_id' | 'slide_num' | 'created_at'>
 >
 
 export function useSlides(projectId: string | undefined) {
@@ -44,10 +44,10 @@ function toSlideRows(projectId: string, parsed: ParsedSlide[]): SlideInsert[] {
     screen_num: slide.screen_num,
     course_name: slide.course_name,
     chapter_name: slide.chapter_name,
-    menu_text: slide.menu_text,
+    current_section: slide.current_section,
     screen_text: slide.screen_text,
     screen_desc: slide.screen_desc,
-    image_num: slide.image_num,
+    image_nums: slide.image_nums,
     narration: slide.narration,
   }))
 }
@@ -168,10 +168,10 @@ export function useBulkUpdateSlides() {
             screen_num: slide.screen_num,
             course_name: slide.course_name,
             chapter_name: slide.chapter_name,
-            menu_text: slide.menu_text,
+            current_section: slide.current_section,
             screen_text: slide.screen_text,
             screen_desc: slide.screen_desc,
-            image_num: slide.image_num,
+            image_nums: slide.image_nums,
             narration: slide.narration,
           })
           .eq('id', slide.id)

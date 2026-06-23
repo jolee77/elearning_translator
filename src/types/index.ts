@@ -82,7 +82,7 @@ export interface Project {
   status: ProjectStatus
   source_pptx_url: string | null
   source_pptx_name: string | null
-  vn_pptx_path: string | null
+  vn_pptx: string | null
   target_lang: string
   created_at: string
   updated_at: string
@@ -96,23 +96,21 @@ export interface Slide {
   screen_num: string | null
   course_name: string | null
   chapter_name: string | null
-  menu_text: string | null
+  current_section: string | null
   screen_text: SlideTextBox[] | null
   screen_desc: string | null
-  image_num: string | null
+  image_nums: string | null
   narration: string | null
   created_at: string
-  updated_at: string
 }
 
 export interface SpellingResult {
   id: string
   project_id: string
   slide_id: string
-  field_key: string
-  original_text: string
-  corrected_text: string
-  issues: SpellingIssue[] | null
+  field: string
+  original: string
+  suggestion: string
   applied: boolean
   created_at: string
 }
@@ -128,10 +126,10 @@ export interface Translation {
   id: string
   project_id: string
   slide_id: string
-  field_key: string
-  ko_text: string
+  field: string
+  source: string
   vi_text: string
-  ko_cpm: number | null
+  cpm: number | null
   vi_wpm: number | null
   created_at: string
   updated_at: string
@@ -143,7 +141,7 @@ export interface Verification {
   slide_id: string
   translation_id: string
   back_translation: string
-  similarity_score: number | null
+  score: number | null
   issues: string | null
   apply_status: VerificationApplyStatus
   created_at: string
@@ -154,11 +152,10 @@ export interface ExpertReview {
   project_id: string
   token: string
   status: ExpertReviewStatus
-  reviewer_name: string | null
-  reviewer_email: string | null
-  memo: string | null
+  expert_name: string | null
+  expert_email: string | null
+  message: string | null
   created_at: string
-  updated_at: string
 }
 
 export interface ExpertReviewProjectInfo {
@@ -184,14 +181,13 @@ export interface ExpertReviewItem {
   id: string
   expert_review_id: string
   slide_id: string
-  translation_id: string
-  field_key: string
-  ko_text: string
-  vi_text: string
+  field: string
   status: ExpertReviewItemStatus
   comment: string | null
   created_at: string
-  updated_at: string
+  /** RPC/UI: translations 조인 시 채워짐 */
+  source?: string
+  vi_text?: string
 }
 
 export interface ChangeLog {
@@ -201,7 +197,7 @@ export interface ChangeLog {
   action: ChangeLogAction
   detail: string | null
   metadata: Record<string, unknown> | null
-  created_at: string
+  changed_at: string
 }
 
 // ─── Supabase Database 타입 ─────────────────────────────────────────────────
@@ -248,10 +244,9 @@ export interface Database {
       >
       slides: TableDef<
         Slide,
-        Omit<Slide, 'id' | 'created_at' | 'updated_at'> & {
+        Omit<Slide, 'id' | 'created_at'> & {
           id?: string
           created_at?: string
-          updated_at?: string
         },
         Partial<Omit<Slide, 'id'>>
       >
@@ -282,27 +277,25 @@ export interface Database {
       >
       expert_reviews: TableDef<
         ExpertReview,
-        Omit<ExpertReview, 'id' | 'created_at' | 'updated_at'> & {
+        Omit<ExpertReview, 'id' | 'created_at'> & {
           id?: string
           created_at?: string
-          updated_at?: string
         },
         Partial<Omit<ExpertReview, 'id'>>
       >
       expert_review_items: TableDef<
         ExpertReviewItem,
-        Omit<ExpertReviewItem, 'id' | 'created_at' | 'updated_at'> & {
+        Omit<ExpertReviewItem, 'id' | 'created_at' | 'source' | 'vi_text'> & {
           id?: string
           created_at?: string
-          updated_at?: string
         },
-        Partial<Omit<ExpertReviewItem, 'id'>>
+        Partial<Omit<ExpertReviewItem, 'id' | 'source' | 'vi_text'>>
       >
       change_logs: TableDef<
         ChangeLog,
-        Omit<ChangeLog, 'id' | 'created_at'> & {
+        Omit<ChangeLog, 'id' | 'changed_at'> & {
           id?: string
-          created_at?: string
+          changed_at?: string
         },
         Partial<Omit<ChangeLog, 'id'>>
       >

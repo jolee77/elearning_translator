@@ -42,7 +42,7 @@ async function fetchAllChangeLogs(projectId: string): Promise<ChangeLog[]> {
     .from('change_logs')
     .select('*')
     .eq('project_id', projectId)
-    .order('created_at', { ascending: true })
+    .order('changed_at', { ascending: true })
 
   if (error) throw error
   return data
@@ -200,10 +200,10 @@ export function DoneStep({ project }: DoneStepProps) {
           </svg>
           <p className="text-sm font-semibold text-emerald-800">프로젝트가 완료되었습니다.</p>
         </div>
-        {completedReview?.reviewer_name && (
+        {completedReview?.expert_name && (
           <p className="mt-1 text-sm text-emerald-700">
-            검증 전문가: {completedReview.reviewer_name}
-            {completedReview.reviewer_email && ` (${completedReview.reviewer_email})`}
+            검증 전문가: {completedReview.expert_name}
+            {completedReview.expert_email && ` (${completedReview.expert_email})`}
           </p>
         )}
       </div>
@@ -248,7 +248,7 @@ export function DoneStep({ project }: DoneStepProps) {
                     )}
                   </div>
                   <time className="text-xs text-gray-400">
-                    {new Date(log.created_at).toLocaleString('ko-KR')}
+                    {new Date(log.changed_at).toLocaleString('ko-KR')}
                   </time>
                 </div>
               </li>

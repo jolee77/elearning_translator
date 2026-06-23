@@ -70,7 +70,7 @@ export function useChangeLogs(projectId: string | undefined) {
         .from('change_logs')
         .select('*')
         .eq('project_id', projectId!)
-        .order('created_at', { ascending: false })
+        .order('changed_at', { ascending: false })
         .limit(30)
 
       if (error) throw error
@@ -127,9 +127,9 @@ export function useCreateExpertReview() {
           project_id: input.projectId,
           token,
           status: 'pending',
-          reviewer_name: input.reviewerName.trim(),
-          reviewer_email: input.reviewerEmail.trim(),
-          memo: input.memo.trim() || null,
+          expert_name: input.reviewerName.trim(),
+          expert_email: input.reviewerEmail.trim(),
+          message: input.memo.trim() || null,
         })
         .select()
         .single()
@@ -139,10 +139,7 @@ export function useCreateExpertReview() {
       const items = translations.map((t) => ({
         expert_review_id: review.id,
         slide_id: t.slide_id,
-        translation_id: t.id,
-        field_key: t.field_key,
-        ko_text: t.ko_text,
-        vi_text: t.vi_text,
+        field: t.field,
         status: 'pending' as const,
       }))
 
@@ -163,7 +160,7 @@ export function useCreateExpertReview() {
           action: 'expert_review_sent',
           detail: `전문가 검증 요청: ${input.reviewerName}`,
           metadata: {
-            reviewer_email: input.reviewerEmail,
+            expert_email: input.reviewerEmail,
             token,
           },
         })

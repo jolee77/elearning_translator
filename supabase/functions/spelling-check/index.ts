@@ -128,10 +128,9 @@ serve(async (req) => {
     const rowsToInsert: Array<{
       project_id: string
       slide_id: string
-      field_key: string
-      original_text: string
-      corrected_text: string
-      issues: SpellingIssue[] | null
+      field: string
+      original: string
+      suggestion: string
       applied: boolean
     }> = []
 
@@ -150,10 +149,9 @@ serve(async (req) => {
           rowsToInsert.push({
             project_id: body.project_id,
             slide_id: slide.id,
-            field_key: field.field_key,
-            original_text: field.original_text,
-            corrected_text: field.corrected_text,
-            issues: field.issues?.length ? field.issues : null,
+            field: field.field_key,
+            original: field.original_text,
+            suggestion: field.corrected_text,
             applied: false,
           })
         }

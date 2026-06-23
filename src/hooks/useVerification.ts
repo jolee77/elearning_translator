@@ -154,7 +154,7 @@ export function useFinalizeVerification() {
 const translationsQueryKey = ['translations'] as const
 
 export function getMatchStatus(verification: Verification): MatchStatus {
-  const score = verification.similarity_score ?? 0
+  const score = verification.score ?? 0
   if (score >= 90 && !verification.issues) return 'ok'
   if (score >= 70) return 'warn'
   return 'fail'

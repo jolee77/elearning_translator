@@ -1,7 +1,7 @@
 import type { Slide } from '../types'
 
 type SlideUpdate = Partial<
-  Omit<Slide, 'id' | 'project_id' | 'slide_num' | 'created_at' | 'updated_at'>
+  Omit<Slide, 'id' | 'project_id' | 'slide_num' | 'created_at'>
 >
 
 export function applyFieldCorrection(

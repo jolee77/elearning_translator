@@ -128,10 +128,10 @@ serve(async (req) => {
     const rowsToInsert: Array<{
       project_id: string
       slide_id: string
-      field_key: string
-      ko_text: string
+      field: string
+      source: string
       vi_text: string
-      ko_cpm: number
+      cpm: number
       vi_wpm: number
     }> = []
 
@@ -150,10 +150,10 @@ serve(async (req) => {
           rowsToInsert.push({
             project_id: body.project_id,
             slide_id: slide.id,
-            field_key: item.field_key,
-            ko_text: item.ko_text,
+            field: item.field_key,
+            source: item.ko_text,
             vi_text: item.vi_text,
-            ko_cpm: calcKoCpm(item.ko_text),
+            cpm: calcKoCpm(item.ko_text),
             vi_wpm: calcTargetWpm(item.vi_text),
           })
         }

@@ -155,14 +155,14 @@ function findTranslation(
   if (!trimmed) return undefined
 
   const matches = translations.filter(
-    (t) => !used.has(t.id) && t.ko_text.trim() === trimmed,
+    (t) => !used.has(t.id) && t.source.trim() === trimmed,
   )
 
   const preferred = matches.find((t) => {
     if (region === 'narration') {
-      return t.field_key === NARRATION_FIELD_KEY || t.field_key === 'narration'
+      return t.field === NARRATION_FIELD_KEY || t.field === 'narration'
     }
-    return t.field_key.startsWith('screen_text') || t.field_key === 'screen_text'
+    return t.field.startsWith('screen_text') || t.field === 'screen_text'
   })
 
   const found = preferred ?? matches[0]

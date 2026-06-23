@@ -133,7 +133,7 @@ export function useCompleteTranslation() {
 }
 
 export function getNarrationSpeedInfo(translation: Translation, targetLang: string) {
-  const koSeconds = estimateKoDurationSeconds(translation.ko_text)
+  const koSeconds = estimateKoDurationSeconds(translation.source)
   const targetSeconds = estimateTargetDurationSeconds(translation.vi_text, targetLang)
   const exceeds = targetSeconds > koSeconds && koSeconds > 0
 

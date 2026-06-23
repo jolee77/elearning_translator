@@ -4,7 +4,6 @@ import { Spinner } from '../ui/Spinner'
 import { useToast } from '../../hooks/ToastProvider'
 import {
   hasSpellingChanges,
-  issueTypeLabel,
   useApplySpellingFix,
   useCompleteSpellingReview,
   useRunSpellingCheck,
@@ -17,11 +16,6 @@ import type { Project, SpellingResult } from '../../types'
 
 interface SpellingStepProps {
   project: Project
-}
-
-function formatIssues(result: SpellingResult): string {
-  if (!result.issues?.length) return '-'
-  return result.issues.map((i) => i.message).join(' / ')
 }
 
 export function SpellingStep({ project }: SpellingStepProps) {
@@ -189,19 +183,13 @@ export function SpellingStep({ project }: SpellingStepProps) {
               <div className="divide-y divide-gray-100">
                 {slideResults.map((result) => {
                   const hasChange = hasSpellingChanges(result)
-                  const primaryIssue = result.issues?.[0]
 
                   return (
                     <div key={result.id} className="px-4 py-3">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-                          {fieldKeyLabel(result.field_key)}
+                          {fieldKeyLabel(result.field)}
                         </span>
-                        {primaryIssue && (
-                          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800">
-                            {issueTypeLabel(primaryIssue.type)}
-                          </span>
-                        )}
                         {result.applied && (
                           <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -215,7 +203,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
                         <div>
                           <p className="text-xs font-medium text-gray-500">원문</p>
                           <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
-                            {result.original_text}
+                            {result.original}
                           </p>
                         </div>
                         <div>
@@ -225,13 +213,10 @@ export function SpellingStep({ project }: SpellingStepProps) {
                               hasChange ? 'font-medium text-accent' : 'text-gray-800'
                             }`}
                           >
-                            {result.corrected_text}
+                            {result.suggestion}
                           </p>
                         </div>
                       </div>
-                      <p className="mt-2 text-xs text-gray-500">
-                        설명: {formatIssues(result)}
-                      </p>
                       {hasChange && !result.applied && (
                         <button
                           type="button"

@@ -201,7 +201,7 @@ export function TranslationStep({ project }: TranslationStepProps) {
               </div>
               <div className="divide-y divide-gray-100">
                 {slideTranslations.map((tr) => {
-                  const isNarration = tr.field_key === NARRATION_FIELD_KEY
+                  const isNarration = tr.field === NARRATION_FIELD_KEY
                   const speedInfo = isNarration
                     ? getNarrationSpeedInfo(tr, project.target_lang)
                     : null
@@ -211,7 +211,7 @@ export function TranslationStep({ project }: TranslationStepProps) {
                     <div key={tr.id} className="px-4 py-3">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-                          {fieldKeyLabel(tr.field_key)}
+                          {fieldKeyLabel(tr.field)}
                         </span>
                         {isNarration && speedInfo && (
                           <span
@@ -229,7 +229,7 @@ export function TranslationStep({ project }: TranslationStepProps) {
                         <div>
                           <p className="text-xs font-medium text-gray-500">한국어</p>
                           <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
-                            {tr.ko_text}
+                            {tr.source}
                           </p>
                         </div>
                         <div>

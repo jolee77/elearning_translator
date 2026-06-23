@@ -77,7 +77,7 @@ export function useApplySpellingFix() {
       slide: Slide
       projectId: string
     }): Promise<void> => {
-      const updates = applyFieldCorrection(slide, result.field_key, result.corrected_text)
+      const updates = applyFieldCorrection(slide, result.field, result.suggestion)
       if (Object.keys(updates).length === 0) {
         throw new Error('해당 필드를 업데이트할 수 없습니다.')
       }
@@ -101,7 +101,7 @@ export function useApplySpellingFix() {
           project_id: projectId,
           user_id: user.id,
           action: 'spelling_applied',
-          detail: `슬라이드 ${slide.slide_num} ${result.field_key} 수정 적용`,
+          detail: `슬라이드 ${slide.slide_num} ${result.field} 수정 적용`,
           metadata: { stage: 'spelling', spelling_result_id: result.id },
         })
       }
@@ -147,5 +147,5 @@ export function issueTypeLabel(type: string): string {
 }
 
 export function hasSpellingChanges(result: SpellingResult): boolean {
-  return result.original_text.trim() !== result.corrected_text.trim()
+  return result.original.trim() !== result.suggestion.trim()
 }

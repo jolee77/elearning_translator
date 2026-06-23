@@ -18,16 +18,46 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 ```
 
 ## DB 테이블 구조
-- profiles: 사용자 (role: admin | designer)
-- settings: 관리자 설정 (claude_api_key 등)
-- projects: 번역 프로젝트 (status 단계별 관리)
-- slides: 슬라이드별 추출 데이터
-- spelling_results: 맞춤법 검사 결과
-- translations: 번역 결과
-- verifications: 역번역 검증 결과
-- expert_reviews: 전문가 검증 세션 (token 기반)
-- expert_review_items: 전문가 검토 항목
-- change_logs: 전체 변경 이력
+
+> 컬럼명은 `src/types/index.ts` 및 Supabase 실제 스키마와 동일해야 함.  
+> 코드에서 임의 명명 금지 (예: `ko_pptx_path`, `menu_text`, `image_num`, `ko_text` 등 사용하지 않음).
+
+### profiles
+- `id`, `email`, `name`, `role` (admin | designer), `created_at`, `updated_at`
+
+### settings (key-value)
+- `id`, `key`, `value` — `claude_api_key`, `default_target_lang` 등은 row로 저장
+
+### projects
+- `id`, `created_by`, `title`, `status`, `source_pptx_url`, `source_pptx_name`, `vn_pptx`, `target_lang`, `created_at`, `updated_at`
+
+### slides
+- `id`, `project_id`, `slide_num`, `slide_type`, `screen_num`, `course_name`, `chapter_name`
+- `current_section` (목차 — `menu_text` 아님)
+- `screen_text` (JSONB), `screen_desc`, `image_nums` (`image_num` 아님), `narration`, `created_at`
+
+### spelling_results
+- `id`, `project_id`, `slide_id`, `field`, `original`, `suggestion`, `applied`, `created_at`
+
+### translations
+- `id`, `project_id`, `slide_id`, `field`, `source` (한국어), `vi_text`, `cpm`, `vi_wpm`, `created_at`, `updated_at`
+
+### verifications
+- `id`, `project_id`, `slide_id`, `translation_id`, `back_translation`, `score`, `issues`, `apply_status`, `created_at`
+
+### expert_reviews
+- `id`, `project_id`, `token`, `status`, `expert_name`, `expert_email`, `message`, `created_at`
+
+### expert_review_items
+- `id`, `expert_review_id`, `slide_id`, `field`, `status`, `comment`, `created_at`
+- 한국어/번역문은 `translations` 조인으로 표시 (`source`, `vi_text`)
+
+### change_logs
+- `id`, `project_id`, `user_id`, `action`, `detail`, `metadata`, `changed_at`
+
+### Storage
+- 버킷: `pptx-files`
+- 경로: `{userId}/{projectId}/source.pptx`
 
 ## 프로젝트 status 흐름
 uploaded → extracted → spelling → spelling_done → translating → translated → verifying → verified → expert_review → done
@@ -165,23 +195,18 @@ const KO_CPM = 320
 
 ## 구현 현황
 
-### 완료 (Phase 1 — 기반)
-- [x] Tailwind CSS 설정 (`tailwind.config.js`, `src/index.css`, `postcss.config.js`)
-- [x] Supabase 클라이언트 (`src/lib/supabase.ts`)
-- [x] TypeScript 타입 정의 (`src/types/index.ts`)
-- [x] 인증 훅 (`src/hooks/useAuth.ts`, `src/hooks/AuthProvider.tsx`)
-- [x] 로그인 페이지 (`src/pages/LoginPage.tsx`)
-- [x] 레이아웃 (`src/components/layout/Layout.tsx` — 사이드바, 헤더, role 기반 관리자 메뉴)
-- [x] 라우팅 (`src/App.tsx` — ProtectedRoute, AdminRoute)
-- [x] 페이지 스텁 (Dashboard, NewProject, ProjectDetail, ExpertReview, admin/*)
+### 완료
+- [x] Tailwind CSS, Supabase Auth, 라우팅, Layout
+- [x] PPTX 업로드 → 파싱 → slides 저장 (`pptxParser`, `useSlides`, ExtractionStep)
+- [x] Edge Function (맞춤법, 번역, 역번역, 용어 추출)
+- [x] 전문가 검증 (토큰 기반 UI + RPC)
+- [x] VN PPTX 생성 + 엑셀 산출물 (`pptxGenerator`, `xlsxGenerator`, DoneStep)
+- [x] 관리자 설정/사용자/프로젝트 화면
+- [x] DB 컬럼명 Supabase 스키마와 통일
 
-### 미구현
-- [ ] PPTX 업로드 → 파싱 → slides 저장
-- [ ] Edge Function (맞춤법, 번역, 역번역)
-- [ ] 전문가 검증 화면 (토큰 기반 실제 UI)
-- [ ] VN PPTX 생성 + 엑셀 산출물
-- [ ] 관리자 설정/사용자/프로젝트 화면 본 구현
-- [ ] 공통 UI 컴포넌트 (Button, Card, Badge 등)
+### 미구현 / 개선
+- [ ] 공통 UI 컴포넌트 리팩터 (Button, Card, Badge 등)
+- [ ] `01_schema.sql` 레포에 DDL 문서화
 
 ## 폴더 구조
 ```

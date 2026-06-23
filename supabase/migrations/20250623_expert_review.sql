@@ -1,8 +1,4 @@
--- 전문가 검증: 추가 컬럼 및 RPC 함수
-
-ALTER TABLE expert_reviews
-  ADD COLUMN IF NOT EXISTS reviewer_email TEXT,
-  ADD COLUMN IF NOT EXISTS memo TEXT;
+-- 전문가 검증: RPC 함수 (실제 DB 컬럼명 기준)
 
 ALTER TABLE expert_reviews
   ALTER COLUMN token SET DEFAULT encode(gen_random_bytes(32), 'hex');
@@ -27,10 +23,24 @@ BEGIN
 
   SELECT * INTO v_project FROM projects WHERE id = v_review.project_id;
 
-  SELECT COALESCE(json_agg(row_to_json(i) ORDER BY s.slide_num, i.field_key), '[]'::json)
+  SELECT COALESCE(json_agg(
+    json_build_object(
+      'id', i.id,
+      'expert_review_id', i.expert_review_id,
+      'slide_id', i.slide_id,
+      'field', i.field,
+      'status', i.status,
+      'comment', i.comment,
+      'created_at', i.created_at,
+      'source', t.source,
+      'vi_text', t.vi_text
+    ) ORDER BY s.slide_num, i.field
+  ), '[]'::json)
   INTO v_items
   FROM expert_review_items i
   JOIN slides s ON s.id = i.slide_id
+  LEFT JOIN translations t
+    ON t.slide_id = i.slide_id AND t.field = i.field AND t.project_id = v_project.id
   WHERE i.expert_review_id = v_review.id;
 
   SELECT COALESCE(json_agg(
@@ -75,6 +85,7 @@ AS $$
 DECLARE
   v_review expert_reviews%ROWTYPE;
   v_item expert_review_items%ROWTYPE;
+  v_project_id UUID;
 BEGIN
   SELECT * INTO v_review FROM expert_reviews WHERE token = p_token;
   IF NOT FOUND THEN
@@ -91,18 +102,26 @@ BEGIN
     RAISE EXCEPTION 'Item not found';
   END IF;
 
+  v_project_id := v_review.project_id;
+
   UPDATE expert_review_items
   SET
     status = p_status,
-    vi_text = COALESCE(p_vi_text, vi_text),
-    comment = p_comment,
-    updated_at = now()
+    comment = p_comment
   WHERE id = p_item_id
   RETURNING * INTO v_item;
 
+  IF p_vi_text IS NOT NULL AND p_status = 'rejected' THEN
+    UPDATE translations t
+    SET vi_text = p_vi_text, updated_at = now()
+    WHERE t.project_id = v_project_id
+      AND t.slide_id = v_item.slide_id
+      AND t.field = v_item.field;
+  END IF;
+
   IF v_review.status = 'pending' THEN
     UPDATE expert_reviews
-    SET status = 'in_progress', updated_at = now()
+    SET status = 'in_progress'
     WHERE id = v_review.id;
   END IF;
 
@@ -134,15 +153,8 @@ BEGIN
     RAISE EXCEPTION 'Not all items reviewed';
   END IF;
 
-  UPDATE translations t
-  SET vi_text = i.vi_text, updated_at = now()
-  FROM expert_review_items i
-  WHERE i.expert_review_id = v_review.id
-    AND i.translation_id = t.id
-    AND i.status = 'rejected';
-
   UPDATE expert_reviews
-  SET status = 'done', updated_at = now()
+  SET status = 'done'
   WHERE id = v_review.id;
 
   UPDATE projects
@@ -154,10 +166,10 @@ BEGIN
     v_review.project_id,
     NULL,
     'expert_review_done',
-    '전문가 검증 완료: ' || COALESCE(v_review.reviewer_name, '전문가'),
+    '전문가 검증 완료: ' || COALESCE(v_review.expert_name, '전문가'),
     json_build_object(
-      'reviewer_name', v_review.reviewer_name,
-      'reviewer_email', v_review.reviewer_email
+      'expert_name', v_review.expert_name,
+      'expert_email', v_review.expert_email
     )
   );
 

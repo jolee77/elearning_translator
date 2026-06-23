@@ -22,9 +22,9 @@ export function downloadExtractionXlsx(slides: Slide[], filename: string): void 
     나레이션: slide.narration ?? '',
     과정명: slide.course_name ?? '',
     회차명: slide.chapter_name ?? '',
-    목차: slide.menu_text ?? '',
+    목차: slide.current_section ?? '',
     화면설명: slide.screen_desc ?? '',
-    이미지번호: slide.image_num ?? '',
+    이미지번호: slide.image_nums ?? '',
   }))
 
   const worksheet = XLSX.utils.json_to_sheet(rows)
@@ -48,7 +48,7 @@ const CHANGE_LOG_ACTION_LABELS: Record<ChangeLogAction, string> = {
 type SheetRow = string[]
 
 function findViByKoText(translations: Translation[], koText: string): string {
-  const match = translations.find((t) => t.ko_text.trim() === koText.trim())
+  const match = translations.find((t) => t.source.trim() === koText.trim())
   return match?.vi_text ?? ''
 }
 
@@ -89,21 +89,21 @@ function buildTranslationRows(
     const screenTranslations = slideTranslations
       .filter(
         (t) =>
-          t.field_key.startsWith('screen_text') || t.field_key === 'screen_text',
+          t.field.startsWith('screen_text') || t.field === 'screen_text',
       )
-      .sort((a, b) => a.field_key.localeCompare(b.field_key))
+      .sort((a, b) => a.field.localeCompare(b.field))
 
     for (const tr of screenTranslations) {
-      rows.push(['', tr.ko_text, includeVi ? tr.vi_text : '', '', '', ''])
+      rows.push(['', tr.source, includeVi ? tr.vi_text : '', '', '', ''])
     }
 
     const narrationTr = slideTranslations.find(
-      (t) => t.field_key === NARRATION_FIELD_KEY || t.field_key === 'narration',
+      (t) => t.field === NARRATION_FIELD_KEY || t.field === 'narration',
     )
     if (narrationTr) {
       rows.push([
         '',
-        narrationTr.ko_text,
+        narrationTr.source,
         includeVi ? narrationTr.vi_text : '',
         '',
         '',
@@ -129,8 +129,8 @@ function buildChangeLogRows(changeLogs: ChangeLog[]): SheetRow[] {
           ? meta.slide_num
           : ''
     const item =
-      typeof meta.field_key === 'string'
-        ? fieldKeyLabel(meta.field_key)
+      typeof meta.field === 'string'
+        ? fieldKeyLabel(meta.field)
         : (log.detail ?? '')
     const before = typeof meta.before === 'string' ? meta.before : ''
     const after = typeof meta.after === 'string' ? meta.after : ''
@@ -143,7 +143,7 @@ function buildChangeLogRows(changeLogs: ChangeLog[]): SheetRow[] {
       before,
       after,
       editor,
-      new Date(log.created_at).toLocaleString('ko-KR'),
+      new Date(log.changed_at).toLocaleString('ko-KR'),
     ])
   }
 

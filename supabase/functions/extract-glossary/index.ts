@@ -16,8 +16,8 @@ interface ExtractGlossaryRequest {
 interface TranslationRow {
   id: string
   slide_id: string
-  field_key: string
-  ko_text: string
+  field: string
+  source: string
   vi_text: string
 }
 
@@ -52,8 +52,8 @@ function buildGlossaryPrompt(
   targetLangName: string,
 ): string {
   const pairs = translations.map((row) => ({
-    field_key: row.field_key,
-    ko_text: row.ko_text,
+    field_key: row.field,
+    ko_text: row.source,
     target_text: row.vi_text,
   }))
 
@@ -112,9 +112,9 @@ serve(async (req) => {
 
     const { data: translations, error: translationsError } = await serviceClient
       .from('translations')
-      .select('id, slide_id, field_key, ko_text, vi_text')
+      .select('id, slide_id, field, source, vi_text')
       .eq('project_id', body.project_id)
-      .not('ko_text', 'is', null)
+      .not('source', 'is', null)
       .not('vi_text', 'is', null)
 
     if (translationsError) {

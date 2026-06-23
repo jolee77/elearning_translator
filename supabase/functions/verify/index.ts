@@ -20,8 +20,8 @@ interface TranslationRow {
   id: string
   project_id: string
   slide_id: string
-  field_key: string
-  ko_text: string
+  field: string
+  source: string
   vi_text: string
 }
 
@@ -49,8 +49,8 @@ const SYSTEM_PROMPT = `당신은 번역 품질 검증 전문가입니다.
 function buildVerifyPrompt(items: TranslationRow[]): string {
   const payload = items.map((item) => ({
     translation_id: item.id,
-    field_key: item.field_key,
-    ko_text: item.ko_text,
+    field_key: item.field,
+    ko_text: item.source,
     translated_text: item.vi_text,
   }))
 
@@ -97,9 +97,9 @@ serve(async (req) => {
 
     const { data: translations, error: translationsError } = await serviceClient
       .from('translations')
-      .select('id, project_id, slide_id, field_key, ko_text, vi_text')
+      .select('id, project_id, slide_id, field, source, vi_text')
       .eq('project_id', body.project_id)
-      .eq('field_key', NARRATION_FIELD_KEY)
+      .eq('field', NARRATION_FIELD_KEY)
       .not('vi_text', 'is', null)
 
     if (translationsError) {
@@ -117,7 +117,7 @@ serve(async (req) => {
       slide_id: string
       translation_id: string
       back_translation: string
-      similarity_score: number | null
+      score: number | null
       issues: string | null
       apply_status: string
     }> = []
@@ -138,7 +138,7 @@ serve(async (req) => {
           slide_id: translation.slide_id,
           translation_id: translation.id,
           back_translation: item.back_translation,
-          similarity_score: item.similarity_score ?? null,
+          score: item.similarity_score ?? null,
           issues: item.issues,
           apply_status: 'pending',
         })

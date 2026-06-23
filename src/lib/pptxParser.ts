@@ -10,10 +10,10 @@ export interface ParsedSlide {
   screen_num: string | null
   course_name: string | null
   chapter_name: string | null
-  menu_text: string | null
+  current_section: string | null
   screen_text: SlideTextBox[] | null
   screen_desc: string | null
-  image_num: string | null
+  image_nums: string | null
   narration: string | null
 }
 
@@ -230,10 +230,10 @@ function parseSlideXml(xml: string, slideNum: number): ParsedSlide | null {
     screen_num: screenNum,
     course_name: joinRegion(regionMap, 'course_name'),
     chapter_name: joinRegion(regionMap, 'chapter_name'),
-    menu_text: joinRegion(regionMap, 'menu'),
+    current_section: joinRegion(regionMap, 'menu'),
     screen_text: screenBoxes.length > 0 ? screenBoxes : null,
     screen_desc: joinRegion(regionMap, 'screen_desc'),
-    image_num: joinRegion(regionMap, 'image_num'),
+    image_nums: joinRegion(regionMap, 'image_num'),
     narration: joinRegion(regionMap, 'narration'),
   }
 }

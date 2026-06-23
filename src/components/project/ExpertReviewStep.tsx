@@ -130,12 +130,12 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
                 <p className="text-sm font-semibold text-indigo-900">검증 링크</p>
                 <p className="mt-1 break-all font-mono text-sm text-indigo-800">{reviewUrl}</p>
                 <p className="mt-2 text-xs text-indigo-600">
-                  전문가: {activeReview.reviewer_name}
-                  {activeReview.reviewer_email && ` (${activeReview.reviewer_email})`}
+                  전문가: {activeReview.expert_name}
+                  {activeReview.expert_email && ` (${activeReview.expert_email})`}
                 </p>
-                {activeReview.memo && (
+                {activeReview.message && (
                   <p className="mt-2 text-xs text-indigo-700">
-                    <span className="font-medium">전달 메모:</span> {activeReview.memo}
+                    <span className="font-medium">전달 메모:</span> {activeReview.message}
                   </p>
                 )}
               </div>

@@ -259,7 +259,7 @@ export function VerificationStep({ project }: VerificationStepProps) {
               key={verification.id}
               verification={verification}
               slideNum={slideNum}
-              koText={translation?.ko_text ?? ''}
+              koText={translation?.source ?? ''}
               viText={editedViTexts[verification.id] ?? translation?.vi_text ?? ''}
               applyStatus={localStatuses[verification.id] ?? verification.apply_status}
               isBusy={isBusy}
@@ -309,7 +309,7 @@ function VerificationItem({
           className={`rounded-full px-2 py-0.5 text-xs font-medium ${matchStatusClass(match)}`}
         >
           {matchStatusLabel(match)}
-          {verification.similarity_score != null && ` (${verification.similarity_score}%)`}
+          {verification.score != null && ` (${verification.score}%)`}
         </span>
       </div>
       <div className="grid gap-3 px-4 py-3 md:grid-cols-3">

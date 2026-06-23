@@ -34,7 +34,7 @@ export function ExpertReviewPage() {
       const slideA = slideMap.get(a.slide_id)?.slide_num ?? 0
       const slideB = slideMap.get(b.slide_id)?.slide_num ?? 0
       if (slideA !== slideB) return slideA - slideB
-      return a.field_key.localeCompare(b.field_key)
+      return a.field.localeCompare(b.field)
     })
   }, [data?.items, slideMap])
 
@@ -122,10 +122,10 @@ export function ExpertReviewPage() {
       </header>
 
       <main className="mx-auto max-w-4xl space-y-4 px-4 py-6 sm:px-6">
-        {data.review.memo && (
+        {data.review.message && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
             <p className="text-xs font-medium text-amber-800">설계담당자 메모</p>
-            <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">{data.review.memo}</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">{data.review.message}</p>
           </div>
         )}
 
@@ -173,7 +173,7 @@ export function ExpertReviewPage() {
                     슬라이드 {slide?.slide_num ?? '-'}
                     {slide?.screen_num && ` (${slide.screen_num})`}
                     {' · '}
-                    {fieldKeyLabel(item.field_key)}
+                    {fieldKeyLabel(item.field)}
                   </h3>
                   {isDone && (
                     <span
@@ -191,7 +191,7 @@ export function ExpertReviewPage() {
                 <div className="grid gap-4 px-4 py-3 md:grid-cols-2">
                   <div>
                     <p className="text-xs font-medium text-gray-500">한국어 원문</p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{item.ko_text}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{item.source}</p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-500">번역문 ({langName})</p>
