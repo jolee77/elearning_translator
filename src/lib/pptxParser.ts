@@ -190,10 +190,17 @@ function classifySlideType(
   return 'content'
 }
 
+function findSpTree(root: Element): Element | null {
+  const cSld = firstChildByLocalName(root, 'cSld')
+  if (cSld) return firstChildByLocalName(cSld, 'spTree')
+  return firstChildByLocalName(root, 'spTree')
+}
+
 function parseSlideXml(xml: string, slideNum: number): ParsedSlide | null {
   const doc = new DOMParser().parseFromString(xml, 'application/xml')
   const root = doc.documentElement
-  const rawBoxes = extractTextBoxes(root)
+  const spTree = findSpTree(root)
+  const rawBoxes = spTree ? extractTextBoxes(spTree) : []
 
   const regionMap = new Map<RegionKey, string[]>()
   const screenBoxes: SlideTextBox[] = []

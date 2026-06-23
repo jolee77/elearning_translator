@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
+import { formatAuthError } from '../lib/authErrors'
 import { supabase } from '../lib/supabase'
 import type { Profile } from '../types'
 import { AuthContext } from './useAuth'
@@ -64,10 +65,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [loadProfile])
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error: error?.message ?? null }
-  }, [])
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+      if (error) {
+        return { error: formatAuthError(error.message) }
+      }
+
+      if (data.session) {
+        setSession(data.session)
+        setUser(data.session.user)
+        await loadProfile(data.session.user.id)
+      }
+
+      return { error: null }
+    },
+    [loadProfile],
+  )
 
   const signUp = useCallback(
     async (email: string, password: string, name: string) => {

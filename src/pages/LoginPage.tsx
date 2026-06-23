@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { Spinner } from '../components/ui/Spinner'
 import { useToast } from '../hooks/ToastProvider'
 import { useAuth } from '../hooks/useAuth'
@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth'
 export function LoginPage() {
   const { user, loading, signIn } = useAuth()
   const { showToast } = useToast()
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -19,12 +20,15 @@ export function LoginPage() {
     e.preventDefault()
     setSubmitting(true)
 
-    const result = await signIn(email, password)
+    const result = await signIn(email.trim(), password)
 
     if (result.error) {
       showToast(result.error, 'error')
+      setSubmitting(false)
+      return
     }
 
+    navigate('/dashboard', { replace: true })
     setSubmitting(false)
   }
 
