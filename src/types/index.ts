@@ -80,7 +80,8 @@ export interface Project {
   created_by: string
   title: string
   status: ProjectStatus
-  ko_pptx_path: string | null
+  source_pptx_url: string | null
+  source_pptx_name: string | null
   vn_pptx_path: string | null
   target_lang: string
   created_at: string

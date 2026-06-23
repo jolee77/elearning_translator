@@ -98,7 +98,10 @@ export function useCreateProject() {
 
       const { data: updated, error: updateError } = await supabase
         .from('projects')
-        .update({ ko_pptx_path: storagePath })
+        .update({
+          source_pptx_url: storagePath,
+          source_pptx_name: input.pptxFile.name,
+        })
         .eq('id', project.id)
         .select()
         .single()

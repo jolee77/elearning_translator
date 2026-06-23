@@ -49,7 +49,7 @@ export function ExtractionStep({ project }: ExtractionStepProps) {
   }, [slides])
 
   const runExtraction = useCallback(async () => {
-    if (!project.ko_pptx_path) {
+    if (!project.source_pptx_url) {
       showToast('PPTX 파일 경로가 없습니다.', 'error')
       return
     }
@@ -57,14 +57,14 @@ export function ExtractionStep({ project }: ExtractionStepProps) {
     try {
       const result = await extractSlides.mutateAsync({
         projectId: project.id,
-        storagePath: project.ko_pptx_path,
+        storagePath: project.source_pptx_url,
       })
       setLocalSlides(result)
       showToast('PPTX 추출이 완료되었습니다.', 'success')
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'PPTX 추출에 실패했습니다.', 'error')
     }
-  }, [extractSlides, project.id, project.ko_pptx_path, showToast])
+  }, [extractSlides, project.id, project.source_pptx_url, showToast])
 
   useEffect(() => {
     if (
@@ -72,7 +72,7 @@ export function ExtractionStep({ project }: ExtractionStepProps) {
       slides.length === 0 &&
       !autoExtractAttempted &&
       !extractSlides.isPending &&
-      project.ko_pptx_path
+      project.source_pptx_url
     ) {
       setAutoExtractAttempted(true)
       runExtraction()
@@ -82,7 +82,7 @@ export function ExtractionStep({ project }: ExtractionStepProps) {
     slides.length,
     autoExtractAttempted,
     extractSlides.isPending,
-    project.ko_pptx_path,
+    project.source_pptx_url,
     runExtraction,
   ])
 
@@ -155,7 +155,7 @@ export function ExtractionStep({ project }: ExtractionStepProps) {
               setAutoExtractAttempted(true)
               runExtraction()
             }}
-            disabled={isBusy || !project.ko_pptx_path}
+            disabled={isBusy || !project.source_pptx_url}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
           >
             {isExtracting && <Spinner />}
@@ -245,7 +245,7 @@ export function ExtractionStep({ project }: ExtractionStepProps) {
           <button
             type="button"
             onClick={runExtraction}
-            disabled={!project.ko_pptx_path}
+            disabled={!project.source_pptx_url}
             className="mt-3 text-sm font-medium text-accent hover:underline disabled:opacity-50"
           >
             PPTX 추출 시작

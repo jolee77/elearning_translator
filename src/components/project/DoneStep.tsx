@@ -82,7 +82,7 @@ export function DoneStep({ project }: DoneStepProps) {
   }
 
   const handleDownloadPptx = async () => {
-    if (!project.ko_pptx_path) {
+    if (!project.source_pptx_url) {
       showToast('원본 PPTX 파일을 찾을 수 없습니다.', 'error')
       return
     }
@@ -93,7 +93,7 @@ export function DoneStep({ project }: DoneStepProps) {
 
     setDownloading('pptx')
     try {
-      const sourceFile = await downloadSourcePptx(project.ko_pptx_path)
+      const sourceFile = await downloadSourcePptx(project.source_pptx_url)
       const blob = await generateVnPptx(sourceFile, translations)
       downloadBlob(blob, `${baseName}_VN.pptx`)
       await logDownload('VN 스토리보드 PPTX 다운로드')
@@ -126,7 +126,7 @@ export function DoneStep({ project }: DoneStepProps) {
   }
 
   const handleDownloadZip = async () => {
-    if (!project.ko_pptx_path) {
+    if (!project.source_pptx_url) {
       showToast('원본 PPTX 파일을 찾을 수 없습니다.', 'error')
       return
     }
@@ -138,7 +138,7 @@ export function DoneStep({ project }: DoneStepProps) {
     setDownloading('zip')
     try {
       const [sourceFile, allChangeLogs] = await Promise.all([
-        downloadSourcePptx(project.ko_pptx_path),
+        downloadSourcePptx(project.source_pptx_url),
         fetchAllChangeLogs(project.id),
       ])
 
@@ -265,7 +265,7 @@ export function DoneStep({ project }: DoneStepProps) {
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={isBusy || !project.ko_pptx_path || translations.length === 0}
+            disabled={isBusy || !project.source_pptx_url || translations.length === 0}
             onClick={handleDownloadPptx}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
           >
@@ -285,7 +285,7 @@ export function DoneStep({ project }: DoneStepProps) {
             type="button"
             disabled={
               isBusy ||
-              !project.ko_pptx_path ||
+              !project.source_pptx_url ||
               slides.length === 0 ||
               translations.length === 0
             }
