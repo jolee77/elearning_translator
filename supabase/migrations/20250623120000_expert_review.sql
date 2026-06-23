@@ -1,7 +1,13 @@
 -- 전문가 검증: RPC 함수 (실제 DB 컬럼명 기준)
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 ALTER TABLE expert_reviews
-  ALTER COLUMN token SET DEFAULT encode(gen_random_bytes(32), 'hex');
+  ALTER COLUMN token SET DEFAULT encode(extensions.gen_random_bytes(32), 'hex');
+
+DROP FUNCTION IF EXISTS get_expert_review_by_token(TEXT);
+DROP FUNCTION IF EXISTS save_expert_review_item(TEXT, UUID, TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS complete_expert_review(TEXT);
 
 -- 토큰으로 전문가 검증 세션 조회 (RLS 우회)
 CREATE OR REPLACE FUNCTION get_expert_review_by_token(p_token TEXT)
