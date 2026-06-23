@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import type { Project, ProjectStatus } from '../types'
 import { useAuth } from './useAuth'
 
-export const STORAGE_BUCKET = 'projects'
+export const STORAGE_BUCKET = 'pptx-files'
 
 const projectsQueryKey = ['projects'] as const
 
