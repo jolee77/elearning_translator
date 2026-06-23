@@ -49,3 +49,5 @@ npm run build
 - 로그인: `signInWithPassword` 직후 세션 반영
 
 배포: [elearning-translator.vercel.app](https://elearning-translator.vercel.app)
+
+> **배포 정책:** `main`에 푸시하면 Vercel이 자동 배포한다. 코드 수정 후에는 커밋·푸시까지 완료한다 (`.cursor/rules/deploy-on-change.mdc`).
