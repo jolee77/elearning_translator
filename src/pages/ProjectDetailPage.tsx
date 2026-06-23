@@ -1,12 +1,128 @@
-import { useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { ExtractionStep } from '../components/project/ExtractionStep'
+import { SpellingStep } from '../components/project/SpellingStep'
+import { StatusBadge } from '../components/project/StatusBadge'
+import { StepNav } from '../components/project/StepNav'
+import { TranslationStep } from '../components/project/TranslationStep'
+import { VerificationStep } from '../components/project/VerificationStep'
+import { ExpertReviewStep } from '../components/project/ExpertReviewStep'
+import { DoneStep } from '../components/project/DoneStep'
+import { Spinner } from '../components/ui/Spinner'
+import { useToast } from '../hooks/ToastProvider'
+import { useProject } from '../hooks/useProject'
+import { canNavigateToStep, statusToStep, stepPrerequisiteMessage } from '../lib/projectStatus'
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const { data: project, isLoading, error } = useProject(id)
+  const { showToast } = useToast()
+  const [viewStep, setViewStep] = useState(1)
+
+  const currentStep = project ? statusToStep(project.status) : 1
+
+  useEffect(() => {
+    if (project) {
+      setViewStep(statusToStep(project.status))
+    }
+  }, [project?.status, project?.id])
+
+  const handleStepClick = (step: number) => {
+    if (!project) return
+    if (!canNavigateToStep(step, project.status)) {
+      showToast(stepPrerequisiteMessage(step), 'error')
+      return
+    }
+    setViewStep(step)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-20">
+        <Spinner className="text-gray-400" />
+        <p className="text-sm text-gray-500">프로젝트를 불러오는 중...</p>
+      </div>
+    )
+  }
+
+  if (error || !project) {
+    return (
+      <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
+        프로젝트를 찾을 수 없습니다.
+        <Link to="/dashboard" className="ml-2 font-medium underline">
+          대시보드로 돌아가기
+        </Link>
+      </div>
+    )
+  }
 
   return (
-    <div>
-      <h2 className="text-xl font-semibold text-gray-900">프로젝트 상세</h2>
-      <p className="mt-2 text-sm text-gray-500">프로젝트 ID: {id}</p>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">{project.title}</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            생성일: {new Date(project.created_at).toLocaleDateString('ko-KR')}
+          </p>
+        </div>
+        <StatusBadge status={project.status} />
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+        <StepNav
+          status={project.status}
+          activeStep={viewStep}
+          onStepClick={handleStepClick}
+        />
+        {viewStep !== currentStep && (
+          <p className="mt-3 text-center text-xs text-gray-500">
+            이전 단계를 확인 중입니다. 현재 진행 단계:{' '}
+            <button
+              type="button"
+              onClick={() => setViewStep(currentStep)}
+              className="font-medium text-accent hover:underline"
+            >
+              {currentStep}단계로 이동
+            </button>
+          </p>
+        )}
+      </div>
+
+      {viewStep === 1 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+          <ExtractionStep project={project} />
+        </div>
+      )}
+
+      {viewStep === 2 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+          <SpellingStep project={project} />
+        </div>
+      )}
+
+      {viewStep === 3 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+          <TranslationStep project={project} />
+        </div>
+      )}
+
+      {viewStep === 4 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+          <VerificationStep project={project} />
+        </div>
+      )}
+
+      {viewStep === 5 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+          <ExpertReviewStep project={project} />
+        </div>
+      )}
+
+      {viewStep === 6 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+          <DoneStep project={project} />
+        </div>
+      )}
     </div>
   )
 }

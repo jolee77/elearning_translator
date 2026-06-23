@@ -67,6 +67,7 @@ export interface Profile {
 export interface Settings {
   id: string
   claude_api_key: string | null
+  default_target_lang: string
   updated_at: string
   updated_by: string | null
 }
@@ -150,8 +151,29 @@ export interface ExpertReview {
   token: string
   status: ExpertReviewStatus
   reviewer_name: string | null
+  reviewer_email: string | null
+  memo: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ExpertReviewProjectInfo {
+  id: string
+  title: string
+  target_lang: string
+}
+
+export interface ExpertReviewSlideInfo {
+  id: string
+  slide_num: number
+  screen_num: string | null
+}
+
+export interface ExpertReviewByTokenResult {
+  review: ExpertReview
+  project: ExpertReviewProjectInfo
+  items: ExpertReviewItem[]
+  slides: ExpertReviewSlideInfo[]
 }
 
 export interface ExpertReviewItem {
@@ -289,17 +311,22 @@ export interface Database {
     }
     Functions: {
       get_expert_review_by_token: {
-        Args: { token: string }
-        Returns: ExpertReview
+        Args: { p_token: string }
+        Returns: ExpertReviewByTokenResult
       }
       save_expert_review_item: {
         Args: {
-          token: string
-          item_id: string
-          status: ExpertReviewItemStatus
-          comment?: string
+          p_token: string
+          p_item_id: string
+          p_status: ExpertReviewItemStatus
+          p_vi_text?: string
+          p_comment?: string
         }
         Returns: ExpertReviewItem
+      }
+      complete_expert_review: {
+        Args: { p_token: string }
+        Returns: { success: boolean }
       }
     }
     Enums: {
