@@ -64,12 +64,15 @@ export interface Profile {
   updated_at: string
 }
 
+export interface SettingRow {
+  id: number
+  key: string
+  value: string | null
+}
+
 export interface Settings {
-  id: string
   claude_api_key: string | null
   default_target_lang: string
-  updated_at: string
-  updated_by: string | null
 }
 
 export interface Project {
@@ -229,12 +232,9 @@ export interface Database {
         Partial<Omit<Profile, 'id'>>
       >
       settings: TableDef<
-        Settings,
-        Omit<Settings, 'id' | 'updated_at'> & {
-          id?: string
-          updated_at?: string
-        },
-        Partial<Omit<Settings, 'id'>>
+        SettingRow,
+        { key: string; value?: string | null },
+        { value?: string | null }
       >
       projects: TableDef<
         Project,

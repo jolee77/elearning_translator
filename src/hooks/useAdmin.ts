@@ -7,18 +7,24 @@ const settingsQueryKey = ['admin', 'settings'] as const
 const profilesQueryKey = ['admin', 'profiles'] as const
 const allProjectsQueryKey = ['admin', 'projects'] as const
 
+function settingsFromRows(rows: { key: string; value: string | null }[]): Settings {
+  const map = new Map(rows.map((row) => [row.key, row.value]))
+  return {
+    claude_api_key: map.get('claude_api_key') ?? null,
+    default_target_lang: map.get('default_target_lang') ?? 'vi',
+  }
+}
+
 export function useSettings() {
   return useQuery({
     queryKey: settingsQueryKey,
-    queryFn: async (): Promise<Settings | null> => {
+    queryFn: async (): Promise<Settings> => {
       const { data, error } = await supabase
         .from('settings')
-        .select('*')
-        .limit(1)
-        .maybeSingle()
+        .select('key, value')
 
       if (error) throw error
-      return data
+      return settingsFromRows(data ?? [])
     },
   })
 }
@@ -36,46 +42,27 @@ export function useUpdateSettings() {
     mutationFn: async (input: UpdateSettingsInput): Promise<Settings> => {
       if (!user) throw new Error('로그인이 필요합니다.')
 
-      const { data: existing, error: fetchError } = await supabase
-        .from('settings')
-        .select('*')
-        .limit(1)
-        .maybeSingle()
-
-      if (fetchError) throw fetchError
-
-      const payload: Record<string, unknown> = {
-        default_target_lang: input.defaultTargetLang,
-        updated_by: user.id,
-      }
+      const rows: { key: string; value: string }[] = [
+        { key: 'default_target_lang', value: input.defaultTargetLang },
+      ]
 
       if (input.claudeApiKey?.trim()) {
-        payload.claude_api_key = input.claudeApiKey.trim()
+        rows.push({ key: 'claude_api_key', value: input.claudeApiKey.trim() })
       }
 
-      if (existing) {
-        const { data, error } = await supabase
-          .from('settings')
-          .update(payload)
-          .eq('id', existing.id)
-          .select()
-          .single()
-
-        if (error) throw error
-        return data
-      }
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('settings')
-        .insert({
-          ...payload,
-          claude_api_key: input.claudeApiKey?.trim() || null,
-        })
-        .select()
-        .single()
+        .upsert(rows, { onConflict: 'key' })
 
       if (error) throw error
-      return data
+
+      const { data, error: fetchError } = await supabase
+        .from('settings')
+        .select('key, value')
+        .in('key', ['claude_api_key', 'default_target_lang'])
+
+      if (fetchError) throw fetchError
+      return settingsFromRows(data ?? [])
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsQueryKey })

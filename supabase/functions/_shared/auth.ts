@@ -49,19 +49,19 @@ export async function authenticateRequest(req: Request): Promise<{
 export async function getClaudeApiKey(serviceClient: SupabaseClient): Promise<string> {
   const { data, error } = await serviceClient
     .from('settings')
-    .select('claude_api_key')
-    .limit(1)
+    .select('value')
+    .eq('key', 'claude_api_key')
     .maybeSingle()
 
   if (error) {
     throw new HttpError(500, `API 키 조회 실패: ${error.message}`)
   }
 
-  if (!data?.claude_api_key) {
+  if (!data?.value) {
     throw new HttpError(400, 'Claude API 키가 설정되지 않았습니다. 관리자 설정에서 등록해 주세요.')
   }
 
-  return data.claude_api_key
+  return data.value
 }
 
 export async function verifyProjectAccess(
