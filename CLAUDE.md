@@ -101,8 +101,8 @@ const SB_CY = 6858000   // 슬라이드 높이 EMU
 isScreenNum:   x/CX > 0.79 && y/CY < 0.12 && w/CX < 0.20  // 화면번호
 isCourseName:  x/CX > 0.10 && x/CX < 0.50 && y/CY >= 0.04 && y/CY < 0.08
 isChapterName: x/CX > 0.10 && x/CX < 0.35 && y/CY >= 0.08 && y/CY < 0.15
-isMenu:        x/CX < 0.25 && y/CY >= 0.08 && y/CY < 0.78  // 좌측 목차
-isScreen:      x/CX >= 0.13 && x/CX < 0.75 && y/CY >= 0.08 && y/CY < 0.78
+isMenu:        박스 전체가 x/CX <= 0.25 (좌측 목차)
+isScreen:      중앙 화면 영역(13%~75%)과 박스가 겹침
 isScreenDesc:  x/CX >= 0.75 && y/CY < 0.63   // 우측 화면설명
 isImageNum:    x/CX >= 0.75 && y/CY >= 0.63 && y/CY < 0.78
 isNarration:   y/CY >= 0.78                   // 하단 나레이션 (또는 y 0.74~0.86 && x < 0.15)

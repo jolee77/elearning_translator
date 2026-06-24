@@ -89,70 +89,74 @@ function extractFontSize(txBody: Element): number | undefined {
   return val ? parseInt(val, 10) / 100 : undefined
 }
 
-/** HTML extractShapes와 동일: spTree 하위 모든 sp를 개별 좌표로 수집 */
-function extractShapes(spTree: Element): RawShape[] {
-  const shapes: RawShape[] = []
-
-  for (const sp of elementsByLocalName(spTree, 'sp')) {
-    const txBody = firstChildByLocalName(sp, 'txBody')
-    if (!txBody) continue
-
-    const text = extractBodyText(txBody)
-    if (!text) continue
-
-    let x = 0
-    let y = 0
-    let w = 0
-    let h = 0
-
-    const xfrm = firstChildByLocalName(sp, 'xfrm')
-    if (xfrm) {
-      const off = firstChildByLocalName(xfrm, 'off')
-      const ext = firstChildByLocalName(xfrm, 'ext')
-      if (off && ext) {
-        x = attrInt(off, 'x')
-        y = attrInt(off, 'y')
-        w = attrInt(ext, 'cx')
-        h = attrInt(ext, 'cy')
-      }
-    }
-
-    shapes.push({
-      text,
-      x,
-      y,
-      w,
-      h,
-      fontSize: extractFontSize(txBody),
-    })
-  }
-
-  for (const frame of elementsByLocalName(spTree, 'graphicFrame')) {
-    const table = firstChildByLocalName(frame, 'tbl')
-    if (!table) continue
-
-    const { x, y, w, h } = (() => {
-      const xfrm = firstChildByLocalName(frame, 'xfrm')
-      const off = xfrm ? firstChildByLocalName(xfrm, 'off') : null
-      const ext = xfrm ? firstChildByLocalName(xfrm, 'ext') : null
-      return {
-        x: attrInt(off, 'x'),
-        y: attrInt(off, 'y'),
-        w: attrInt(ext, 'cx'),
-        h: attrInt(ext, 'cy'),
-      }
+function getShapeTransform(shape: Element): { x: number; y: number; w: number; h: number } {
+  const xfrm =
+    firstChildByLocalName(shape, 'xfrm') ??
+    (() => {
+      const spPr = firstChildByLocalName(shape, 'spPr')
+      return spPr ? firstChildByLocalName(spPr, 'xfrm') : null
     })()
 
-    for (const tc of elementsByLocalName(table, 'tc')) {
-      const txBody = firstChildByLocalName(tc, 'txBody')
+  const off = xfrm ? firstChildByLocalName(xfrm, 'off') : null
+  const ext = xfrm ? firstChildByLocalName(xfrm, 'ext') : null
+
+  return {
+    x: attrInt(off, 'x'),
+    y: attrInt(off, 'y'),
+    w: attrInt(ext, 'cx'),
+    h: attrInt(ext, 'cy'),
+  }
+}
+
+/** grpSp offset 반영하여 spTree 하위 텍스트 도형 수집 */
+function collectRawShapes(parent: Element, offsetX = 0, offsetY = 0): RawShape[] {
+  const shapes: RawShape[] = []
+
+  for (const child of Array.from(parent.children)) {
+    if (!(child instanceof Element)) continue
+
+    if (child.localName === 'sp') {
+      const txBody = firstChildByLocalName(child, 'txBody')
       if (!txBody) continue
+
       const text = extractBodyText(txBody)
       if (!text) continue
-      shapes.push({ text, x, y, w, h })
+
+      const { x, y, w, h } = getShapeTransform(child)
+      shapes.push({
+        text,
+        x: x + offsetX,
+        y: y + offsetY,
+        w,
+        h,
+        fontSize: extractFontSize(txBody),
+      })
+    } else if (child.localName === 'grpSp') {
+      const { x, y } = getShapeTransform(child)
+      shapes.push(...collectRawShapes(child, offsetX + x, offsetY + y))
+    } else if (child.localName === 'graphicFrame') {
+      const table = firstChildByLocalName(child, 'tbl')
+      if (!table) continue
+
+      const { x, y, w, h } = getShapeTransform(child)
+      const absX = x + offsetX
+      const absY = y + offsetY
+
+      for (const tc of elementsByLocalName(table, 'tc')) {
+        const txBody = firstChildByLocalName(tc, 'txBody')
+        if (!txBody) continue
+        const text = extractBodyText(txBody)
+        if (!text) continue
+        shapes.push({ text, x: absX, y: absY, w, h })
+      }
     }
   }
 
   return shapes
+}
+
+function extractShapes(spTree: Element): RawShape[] {
+  return collectRawShapes(spTree)
 }
 
 function isScreenNum(x: number, y: number, w: number, _h: number): boolean {
@@ -167,12 +171,24 @@ function isChapterName(x: number, y: number, _w: number, _h: number): boolean {
   return x / SB_CX > 0.1 && x / SB_CX < 0.35 && y / SB_CY >= 0.08 && y / SB_CY < 0.15
 }
 
-function isMenu(x: number, y: number, _w: number, _h: number): boolean {
-  return x / SB_CX < 0.25 && y / SB_CY >= 0.08 && y / SB_CY < 0.78
+/** 좌측 목차: 박스 전체가 좌측 25% 안에 있을 때만 (왼쪽 끝만 닿으면 화면 텍스트로 인정) */
+function isMenu(x: number, y: number, w: number, h: number): boolean {
+  const xRight = (x + w) / SB_CX
+  const yBottom = (y + h) / SB_CY
+  return xRight <= 0.25 && y / SB_CY >= 0.08 && yBottom <= 0.78
 }
 
-function isScreen(x: number, y: number, _w: number, _h: number): boolean {
-  return x / SB_CX >= 0.13 && x / SB_CX < 0.75 && y / SB_CY >= 0.08 && y / SB_CY < 0.78
+/** 중앙 화면 영역과 겹치는 박스 (왼쪽 상단 좌표만 보지 않음) */
+function overlapsScreenContent(x: number, y: number, w: number, h: number): boolean {
+  const xR = x / SB_CX
+  const xRight = (x + w) / SB_CX
+  const yR = y / SB_CY
+  const yBottom = (y + h) / SB_CY
+  return xRight > 0.13 && xR < 0.75 && yBottom > 0.08 && yR < 0.78
+}
+
+function isScreen(x: number, y: number, w: number, h: number): boolean {
+  return overlapsScreenContent(x, y, w, h)
 }
 
 function isScreenDesc(x: number, y: number, _w: number, _h: number): boolean {
@@ -272,14 +288,11 @@ export function isSyncMarkerOnly(text: string): boolean {
 }
 
 function toScreenBoxes(shapes: RawShape[]): SlideTextBox[] {
-  const menuShapes = shapes.filter((s) => isMenu(s.x, s.y, s.w, s.h))
-  const menuSet = new Set(menuShapes)
-
   return shapes
     .filter(
       (s) =>
-        isScreen(s.x, s.y, s.w, s.h) &&
-        !menuSet.has(s) &&
+        overlapsScreenContent(s.x, s.y, s.w, s.h) &&
+        !isMenu(s.x, s.y, s.w, s.h) &&
         !isSyncMarkerOnly(s.text),
     )
     .sort((a, b) => a.y - b.y || a.x - b.x)
