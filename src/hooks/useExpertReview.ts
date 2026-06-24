@@ -138,13 +138,17 @@ export function useCreateExpertReview() {
 
       const items = translations.map((t) => ({
         expert_review_id: review.id,
+        project_id: input.projectId,
         slide_id: t.slide_id,
         field: t.field,
         status: 'pending' as const,
       }))
 
       const { error: itemsError } = await supabase.from('expert_review_items').insert(items)
-      if (itemsError) throw itemsError
+      if (itemsError) {
+        await supabase.from('expert_reviews').delete().eq('id', review.id)
+        throw itemsError
+      }
 
       const { error: statusError } = await supabase
         .from('projects')
