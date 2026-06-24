@@ -13,26 +13,18 @@ import {
 } from '../../hooks/useTranslation'
 import {
   getMatchStatus,
-  isVerificationResolved,
   matchStatusClass,
   matchStatusLabel,
   needsVerificationReview,
-  useBulkUpdateVerificationStatus,
   useFinalizeVerification,
   useRunVerification,
-  useUpdateVerificationStatus,
   useVerifications,
 } from '../../hooks/useVerification'
 import { fieldKeyLabel } from '../../lib/slideFields'
 import { getLangConfig } from '../../lib/lang'
 import { isStepAccessible, stepPrerequisiteMessage } from '../../lib/projectStatus'
 import type { ChunkProgress } from '../../lib/chunkProgress'
-import type {
-  Project,
-  Translation,
-  Verification,
-  VerificationApplyStatus,
-} from '../../types'
+import type { Project, Translation } from '../../types'
 
 interface TranslationVerificationStepProps {
   project: Project
@@ -52,8 +44,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
   const runTranslation = useRunTranslation()
   const runVerification = useRunVerification()
   const updateTranslation = useUpdateTranslation()
-  const updateStatus = useUpdateVerificationStatus()
-  const bulkUpdateStatus = useBulkUpdateVerificationStatus()
   const finalize = useFinalizeVerification()
 
   const [chunkProgress, setChunkProgress] = useState<ChunkProgress | null>(null)
@@ -61,8 +51,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
   const [isVerifying, setIsVerifying] = useState(false)
   const [localTexts, setLocalTexts] = useState<Record<string, string>>({})
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
-  const [localStatuses, setLocalStatuses] = useState<Record<string, VerificationApplyStatus>>({})
-  const [editedViTexts, setEditedViTexts] = useState<Record<string, string>>({})
 
   const accessible = isStepAccessible(3, project.status)
   const langName = getLangConfig(project.target_lang).name
@@ -72,10 +60,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
   )
 
   const slideMap = useMemo(() => new Map(slides.map((s) => [s.id, s])), [slides])
-  const translationMap = useMemo(
-    () => new Map(translations.map((t) => [t.id, t])),
-    [translations],
-  )
   const verificationByTranslationId = useMemo(
     () => new Map(verifications.map((v) => [v.translation_id, v])),
     [verifications],
@@ -93,9 +77,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     return [...groups.entries()].sort(([a], [b]) => a - b)
   }, [translations, slideMap])
 
-  const getApplyStatus = (v: Verification): VerificationApplyStatus =>
-    localStatuses[v.id] ?? v.apply_status
-
   useEffect(() => {
     const next: Record<string, string> = {}
     for (const tr of translations) {
@@ -105,39 +86,18 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [translations])
 
-  useEffect(() => {
-    const statuses: Record<string, VerificationApplyStatus> = {}
-    const texts: Record<string, string> = {}
-    for (const v of verifications) {
-      statuses[v.id] = localStatuses[v.id] ?? v.apply_status
-      const tr = translationMap.get(v.translation_id)
-      texts[v.id] = editedViTexts[v.id] ?? tr?.vi_text ?? ''
-    }
-    setLocalStatuses(statuses)
-    setEditedViTexts(texts)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [verifications, translations])
-
   const reviewSummary = useMemo(() => {
     let passed = 0
     let needsReview = 0
-    let unresolved = 0
     for (const v of verifications) {
       if (needsVerificationReview(v)) {
         needsReview++
-        if (!isVerificationResolved(v, getApplyStatus(v))) unresolved++
       } else {
         passed++
       }
     }
-    return { passed, needsReview, unresolved }
-  }, [verifications, localStatuses])
-
-  const pendingReviewIds = verifications
-    .filter(
-      (v) => needsVerificationReview(v) && !isVerificationResolved(v, getApplyStatus(v)),
-    )
-    .map((v) => v.id)
+    return { passed, needsReview }
+  }, [verifications])
 
   const handleRunTranslation = async () => {
     if (!accessible) {
@@ -213,34 +173,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     }
   }
 
-  const setStatus = async (id: string, status: VerificationApplyStatus) => {
-    setLocalStatuses((prev) => ({ ...prev, [id]: status }))
-    try {
-      await updateStatus.mutateAsync({ id, projectId: project.id, applyStatus: status })
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : '상태 변경에 실패했습니다.', 'error')
-    }
-  }
-
-  const handleBulk = async (status: VerificationApplyStatus) => {
-    if (pendingReviewIds.length === 0) return
-    setLocalStatuses((prev) => {
-      const next = { ...prev }
-      for (const id of pendingReviewIds) next[id] = status
-      return next
-    })
-    try {
-      await bulkUpdateStatus.mutateAsync({
-        projectId: project.id,
-        ids: pendingReviewIds,
-        applyStatus: status,
-      })
-      showToast(`${pendingReviewIds.length}건 일괄 처리되었습니다.`, 'success')
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : '일괄 처리에 실패했습니다.', 'error')
-    }
-  }
-
   const handleComplete = async () => {
     if (dirtyIds.size > 0) {
       showToast('저장되지 않은 변경사항이 있습니다.', 'error')
@@ -264,38 +196,9 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
       )
       return
     }
-    if (pendingReviewIds.length > 0) {
-      showToast('주의·불일치 항목의 반영 여부를 모두 선택해 주세요.', 'error')
-      return
-    }
-
-    const okPendingIds = verifications
-      .filter((v) => !needsVerificationReview(v) && getApplyStatus(v) === 'pending')
-      .map((v) => v.id)
-
-    if (okPendingIds.length > 0) {
-      try {
-        await bulkUpdateStatus.mutateAsync({
-          projectId: project.id,
-          ids: okPendingIds,
-          applyStatus: 'skipped',
-        })
-      } catch (err) {
-        showToast(err instanceof Error ? err.message : '확정 처리에 실패했습니다.', 'error')
-        return
-      }
-    }
-
-    const appliedUpdates = verifications
-      .filter((v) => getApplyStatus(v) === 'applied')
-      .map((v) => ({
-        translationId: v.translation_id,
-        viText: editedViTexts[v.id] ?? translationMap.get(v.translation_id)?.vi_text ?? '',
-      }))
-      .filter((u) => u.viText.trim())
 
     try {
-      await finalize.mutateAsync({ projectId: project.id, appliedUpdates })
+      await finalize.mutateAsync({ projectId: project.id })
       showToast('번역·역번역 검증이 완료되었습니다. 전문가 검증을 요청할 수 있습니다.', 'success')
       onStepComplete?.()
     } catch (err) {
@@ -309,8 +212,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     runTranslation.isPending ||
     runVerification.isPending ||
     updateTranslation.isPending ||
-    updateStatus.isPending ||
-    bulkUpdateStatus.isPending ||
     finalize.isPending
 
   const isLoading = translationsLoading || verificationsLoading
@@ -322,7 +223,8 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
         <div>
           <h3 className="text-base font-semibold text-gray-900">Step 3. 번역·역번역 검증</h3>
           <p className="mt-0.5 text-sm text-gray-500">
-            AI 번역 후 화면텍스트·나레이션 모두 역번역으로 품질을 확인합니다. 나레이션 싱크 마커(#1, #2…)는 유지됩니다.
+            AI 번역 후 화면텍스트·나레이션 모두 역번역으로 품질을 확인합니다. 역번역 결과는 전문가
+            검증용 참고 자료이며, 반영 여부는 전문가가 판단합니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -351,8 +253,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
               isBusy ||
               translations.length === 0 ||
               verifications.length === 0 ||
-              dirtyIds.size > 0 ||
-              pendingReviewIds.length > 0
+              dirtyIds.size > 0
             }
             className="nb-btn-primary"
           >
@@ -368,45 +269,15 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
 
       {verifications.length > 0 && (
         <div className="nb-summary-bar">
-          <span className="font-medium text-emerald-700">
-            일치 {reviewSummary.passed}건 · 자동 통과
-          </span>
+          <span className="font-medium text-emerald-700">일치 {reviewSummary.passed}건</span>
           {reviewSummary.needsReview > 0 && (
             <>
               <span className="text-gray-300">|</span>
-              <span
-                className={
-                  reviewSummary.unresolved > 0
-                    ? 'font-medium text-amber-700'
-                    : 'text-gray-600'
-                }
-              >
-                검토 필요 {reviewSummary.needsReview}건
-                {reviewSummary.unresolved > 0 && ` (미선택 ${reviewSummary.unresolved}건)`}
+              <span className="font-medium text-amber-700">
+                주의·불일치 {reviewSummary.needsReview}건 · 전문가 검증 시 참고
               </span>
             </>
           )}
-        </div>
-      )}
-
-      {verifications.length > 0 && reviewSummary.needsReview > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => handleBulk('applied')}
-            disabled={isBusy || pendingReviewIds.length === 0}
-            className="nb-btn-secondary text-xs"
-          >
-            검토 필요 전체 반영
-          </button>
-          <button
-            type="button"
-            onClick={() => handleBulk('skipped')}
-            disabled={isBusy || pendingReviewIds.length === 0}
-            className="nb-btn-secondary text-xs"
-          >
-            검토 필요 전체 유지
-          </button>
         </div>
       )}
 
@@ -504,7 +375,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
                         </div>
                         {verification ? (
                           <div>
-                            <p className="nb-field-label">역번역</p>
+                            <p className="nb-field-label">역번역 (전문가 참고)</p>
                             <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
                               {verification.back_translation}
                             </p>
@@ -512,26 +383,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
                               <p className="mt-2 text-xs text-amber-800">
                                 {verification.issues}
                               </p>
-                            )}
-                            {needsVerificationReview(verification) && (
-                              <VerificationActions
-                                verification={verification}
-                                applyStatus={getApplyStatus(verification)}
-                                viText={
-                                  editedViTexts[verification.id] ??
-                                  translationMap.get(verification.translation_id)?.vi_text ??
-                                  ''
-                                }
-                                isBusy={isBusy}
-                                onApply={() => setStatus(verification.id, 'applied')}
-                                onSkip={() => setStatus(verification.id, 'skipped')}
-                                onViTextChange={(text) =>
-                                  setEditedViTexts((prev) => ({
-                                    ...prev,
-                                    [verification.id]: text,
-                                  }))
-                                }
-                              />
                             )}
                           </div>
                         ) : showVerificationColumn ? (
@@ -550,63 +401,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
             </div>
           ))}
         </div>
-      )}
-    </div>
-  )
-}
-
-function VerificationActions({
-  verification,
-  applyStatus,
-  viText,
-  isBusy,
-  onApply,
-  onSkip,
-  onViTextChange,
-}: {
-  verification: Verification
-  applyStatus: VerificationApplyStatus
-  viText: string
-  isBusy: boolean
-  onApply: () => void
-  onSkip: () => void
-  onViTextChange: (text: string) => void
-}) {
-  const resolved = isVerificationResolved(verification, applyStatus)
-
-  if (resolved) {
-    return (
-      <p className="mt-2 text-xs font-medium text-gray-500">
-        {applyStatus === 'applied' ? '수정 반영 선택됨' : '번역문 유지 선택됨'}
-      </p>
-    )
-  }
-
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-2">
-      <span className="text-xs text-amber-700">반영 여부 선택</span>
-      <button
-        type="button"
-        onClick={onApply}
-        disabled={isBusy}
-        className="nb-btn-secondary text-xs"
-      >
-        수정 반영
-      </button>
-      <button
-        type="button"
-        onClick={onSkip}
-        disabled={isBusy}
-        className="nb-btn-secondary text-xs"
-      >
-        번역문 유지
-      </button>
-      {applyStatus === 'applied' && (
-        <AutoResizeTextarea
-          value={viText}
-          onChange={(e) => onViTextChange(e.target.value)}
-          className="nb-textarea mt-1 w-full"
-        />
       )}
     </div>
   )

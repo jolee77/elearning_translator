@@ -148,29 +148,14 @@ export function useFinalizeVerification() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({
-      projectId,
-      appliedUpdates,
-    }: {
-      projectId: string
-      appliedUpdates: Array<{ translationId: string; viText: string }>
-    }): Promise<void> => {
-      for (const { translationId, viText } of appliedUpdates) {
-        const { error } = await supabase
-          .from('translations')
-          .update({ vi_text: viText })
-          .eq('id', translationId)
-
-        if (error) throw error
-      }
-
+    mutationFn: async ({ projectId }: { projectId: string }): Promise<void> => {
       if (user) {
         await supabase.from('change_logs').insert({
           project_id: projectId,
           user_id: user.id,
           action: 'verification_applied',
-          detail: `${appliedUpdates.length}건 역번역 검증 반영 확정`,
-          metadata: { stage: 'verification', count: appliedUpdates.length },
+          detail: '번역·역번역 검증 단계 완료',
+          metadata: { stage: 'verification' },
         })
       }
 
@@ -199,7 +184,7 @@ export function getMatchStatus(verification: Verification): MatchStatus {
   return 'fail'
 }
 
-/** 주의·불일치만 사용자 검토가 필요 */
+/** 주의·불일치 항목 (전문가 검증 참고용) */
 export function needsVerificationReview(verification: Verification): boolean {
   const match = getMatchStatus(verification)
   return match === 'warn' || match === 'fail'
