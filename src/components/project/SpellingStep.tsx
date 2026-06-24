@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChunkProgressPanel } from '../ui/ChunkProgressPanel'
 import { Spinner } from '../ui/Spinner'
+import { SuggestionHighlight } from '../ui/SuggestionHighlight'
 import { useToast } from '../../hooks/ToastProvider'
 import {
   hasSpellingChanges,
@@ -349,12 +350,12 @@ export function SpellingStep({ project }: SpellingStepProps) {
                         </div>
                         <div>
                           <p className="text-xs font-medium text-gray-500">AI 수정안</p>
-                          <p
-                            className={`mt-1 whitespace-pre-wrap text-sm ${
-                              hasChange ? 'font-medium text-accent' : 'text-gray-800'
-                            }`}
-                          >
-                            {result.suggestion}
+                          <p className="mt-1 whitespace-pre-wrap text-sm">
+                            <SuggestionHighlight
+                              original={result.original}
+                              suggestion={result.suggestion}
+                              highlightChanges={hasChange}
+                            />
                           </p>
                         </div>
                       </div>
