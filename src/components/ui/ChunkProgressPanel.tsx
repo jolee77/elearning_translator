@@ -15,11 +15,13 @@ export function ChunkProgressPanel({ title, progress, hint }: ChunkProgressPanel
       ? `${progress.phase} (${progress.current}/${progress.total}묶음)`
       : progress.phase
 
+  const waitingForFirstBatch = progress.total > 0 && progress.current === 0
+
   return (
     <div className="space-y-1">
       <ProgressBar
         progress={progress.percent}
-        indeterminate={progress.percent > 0 && progress.percent < 100 && progress.current < 1}
+        indeterminate={waitingForFirstBatch}
         label={`${title} — ${batchLabel}`}
       />
       {hint && <p className="text-xs text-gray-500">{hint}</p>}

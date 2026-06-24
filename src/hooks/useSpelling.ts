@@ -11,6 +11,8 @@ import type { Slide, SpellingResult } from '../types'
 import { useAuth } from './useAuth'
 
 const spellingQueryKey = ['spelling_results'] as const
+/** Edge Function spelling-check BATCH_SIZE와 동일 */
+const SPELLING_BATCH_SIZE = 10
 
 function normalizeSpellingResult(row: SpellingResult & { issues?: unknown }): SpellingResult {
   return {
@@ -69,19 +71,39 @@ export function useRunSpellingCheck() {
 
       if (statusError) throw statusError
 
-      onChunkProgress?.(
-        mergeChunkProgress(0, 1, `${slideIds.length}개 슬라이드 AI 검사 중`),
-      )
-      onProgress?.(5)
+      const batches: string[][] = []
+      for (let i = 0; i < slideIds.length; i += SPELLING_BATCH_SIZE) {
+        batches.push(slideIds.slice(i, i + SPELLING_BATCH_SIZE))
+      }
 
-      const result = await spellingCheck(projectId, slideIds, {
-        resetResults: true,
-        finalize: true,
-      })
+      let totalResults = 0
+      let processedSlides = 0
 
-      onProgress?.(95)
+      onChunkProgress?.(mergeChunkProgress(0, batches.length, '맞춤법 검사 준비'))
+      onProgress?.(0)
 
-      if (result.result_count === 0) {
+      for (let i = 0; i < batches.length; i++) {
+        const from = i * SPELLING_BATCH_SIZE + 1
+        const to = Math.min((i + 1) * SPELLING_BATCH_SIZE, slideIds.length)
+
+        onChunkProgress?.(
+          mergeChunkProgress(i, batches.length, `${from}~${to}번 슬라이드 AI 검사 중`),
+        )
+
+        const result = await spellingCheck(projectId, batches[i], {
+          resetResults: i === 0,
+          finalize: i === batches.length - 1,
+        })
+
+        totalResults += result.result_count
+        processedSlides += result.processed_slides
+
+        const percent = Math.round(((i + 1) / batches.length) * 100)
+        onChunkProgress?.(mergeChunkProgress(i + 1, batches.length, 'AI 검사'))
+        onProgress?.(percent)
+      }
+
+      if (totalResults === 0) {
         throw new Error(
           '맞춤법 검사 결과가 저장되지 않았습니다. 추출된 화면 텍스트·나레이션이 있는지 확인해 주세요.',
         )
@@ -108,12 +130,13 @@ export function useRunSpellingCheck() {
       })
       const changeCount = results.filter(hasSpellingTextChanges).length
 
-      onChunkProgress?.(mergeChunkProgress(1, 1, '맞춤법 검사 완료'))
+      onChunkProgress?.(mergeChunkProgress(batches.length, batches.length, '맞춤법 검사 완료'))
+      onProgress?.(100)
 
       return {
-        resultCount: result.result_count,
+        resultCount: totalResults,
         changeCount,
-        processedSlides: result.processed_slides,
+        processedSlides,
       }
     },
     onSuccess: (_data, variables) => {
