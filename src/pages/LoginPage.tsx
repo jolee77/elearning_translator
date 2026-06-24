@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { Spinner } from '../components/ui/Spinner'
 import { useToast } from '../hooks/ToastProvider'
 import { useAuth } from '../hooks/useAuth'
+import { supabase } from '../lib/supabase'
 
 export function LoginPage() {
   const { user, loading, signIn } = useAuth()
@@ -11,6 +12,7 @@ export function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [sendingReset, setSendingReset] = useState(false)
 
   if (!loading && user) {
     return <Navigate to="/dashboard" replace />
@@ -36,6 +38,31 @@ export function LoginPage() {
 
     navigate('/dashboard', { replace: true })
     setSubmitting(false)
+  }
+
+  const handleForgotPassword = async () => {
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail) {
+      showToast('비밀번호 재설정을 위해 이메일을 먼저 입력해 주세요.', 'error')
+      return
+    }
+
+    setSendingReset(true)
+
+    const redirectTo = `${window.location.origin}/reset-password`
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, { redirectTo })
+
+    if (error) {
+      showToast(error.message, 'error')
+      setSendingReset(false)
+      return
+    }
+
+    showToast(
+      `${trimmedEmail}로 비밀번호 재설정 메일을 보냈습니다. 메일함(스팸 포함)을 확인해 주세요.`,
+      'success',
+    )
+    setSendingReset(false)
   }
 
   if (loading) {
@@ -77,7 +104,7 @@ export function LoginPage() {
               id="password"
               type="password"
               required
-              minLength={6}
+              minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
@@ -87,11 +114,20 @@ export function LoginPage() {
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || sendingReset}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-600 disabled:opacity-50"
           >
             {submitting && <Spinner className="text-white" />}
             {submitting ? '처리 중...' : '로그인'}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            disabled={submitting || sendingReset}
+            className="w-full text-center text-sm text-gray-500 transition-colors hover:text-accent disabled:opacity-50"
+          >
+            {sendingReset ? '재설정 메일 발송 중...' : '비밀번호를 잊으셨나요?'}
           </button>
         </form>
 

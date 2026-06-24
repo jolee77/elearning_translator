@@ -1,7 +1,9 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { AuthRecoveryRedirect } from './components/auth/AuthRecoveryRedirect'
 import { AdminRoute, ProtectedRoute } from './components/auth/ProtectedRoute'
 import { Layout } from './components/layout/Layout'
 import { LoginPage } from './pages/LoginPage'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { NewProjectPage } from './pages/NewProjectPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
@@ -12,8 +14,11 @@ import { ProjectsPage } from './pages/admin/ProjectsPage'
 
 export function App() {
   return (
-    <Routes>
+    <>
+      <AuthRecoveryRedirect />
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/review/:token" element={<ExpertReviewPage />} />
 
       <Route element={<ProtectedRoute />}>
@@ -33,6 +38,7 @@ export function App() {
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </>
   )
 }
 

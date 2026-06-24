@@ -22,7 +22,8 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 - Vercel과 **localhost는 세션(localStorage)이 공유되지 않습니다.** 로컬에서도 별도로 로그인해야 합니다.
 - `.env`는 `elearning-translator` 폴더에 두고, **수정 후 dev 서버를 재시작**하세요.
 - 비밀번호 오류 시 토스트: 「이메일 또는 비밀번호가 올바르지 않습니다」
-- 로그인 성공 직후 대시보드로 튕기면 브라우저 시크릿 모드/저장소 차단 여부를 확인하세요.
+- 로그인 화면 「비밀번호를 잊으셨나요?」→ `/reset-password` 재설정 메일 발송
+- Supabase Redirect URLs에 `https://elearning-translator.vercel.app/**`, `http://localhost:5173/**` 등록 필요
 
 ## DB 테이블 구조
 
