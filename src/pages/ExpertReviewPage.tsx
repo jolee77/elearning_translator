@@ -255,15 +255,6 @@ export function ExpertReviewPage() {
                     </p>
                   </div>
 
-                  {selectedItem.back_translation && (
-                    <div>
-                      <p className="nb-field-label">역번역 (한국어)</p>
-                      <p className="mt-1 whitespace-pre-wrap rounded-lg border border-[#91caff] bg-[#f0f9ff] p-3 text-sm text-gray-800">
-                        {selectedItem.back_translation}
-                      </p>
-                    </div>
-                  )}
-
                   <div>
                     <p className="nb-field-label">번역문 ({langName})</p>
                     <AutoResizeTextarea
@@ -278,6 +269,15 @@ export function ExpertReviewPage() {
                       className="nb-textarea mt-1"
                     />
                   </div>
+
+                  {selectedItem.back_translation && (
+                    <div>
+                      <p className="nb-field-label">역번역 (한국어)</p>
+                      <p className="mt-1 whitespace-pre-wrap rounded-lg border border-[#91caff] bg-[#f0f9ff] p-3 text-sm text-gray-800">
+                        {selectedItem.back_translation}
+                      </p>
+                    </div>
+                  )}
 
                   <div>
                     <label className="nb-field-label">코멘트</label>

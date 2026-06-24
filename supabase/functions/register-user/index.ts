@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
-import { type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import { type SupabaseClient, type User } from 'npm:@supabase/supabase-js@2'
 import { authenticateRequest } from '../_shared/auth.ts'
 import { handleCors } from '../_shared/cors.ts'
 import { HttpError, errorResponse, jsonResponse, parseJsonBody } from '../_shared/http.ts'
@@ -9,6 +9,57 @@ interface RegisterRequest {
   name: string
   password: string
   role: 'admin' | 'designer'
+}
+
+function isDuplicateEmailError(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('already been registered') ||
+    normalized.includes('already registered') ||
+    normalized.includes('user already registered')
+  )
+}
+
+async function findUserByEmail(
+  serviceClient: SupabaseClient,
+  email: string,
+): Promise<User | null> {
+  let page = 1
+
+  while (true) {
+    const { data, error } = await serviceClient.auth.admin.listUsers({ page, perPage: 100 })
+    if (error) {
+      throw new HttpError(500, `사용자 조회 실패: ${error.message}`)
+    }
+
+    const matched = data.users.find((candidate) => candidate.email?.toLowerCase() === email)
+    if (matched) return matched
+
+    if (data.users.length < 100) return null
+    page++
+  }
+}
+
+async function upsertProfile(
+  serviceClient: SupabaseClient,
+  userId: string,
+  email: string,
+  name: string,
+  role: 'admin' | 'designer',
+): Promise<void> {
+  const { error: profileError } = await serviceClient.from('profiles').upsert(
+    {
+      id: userId,
+      email,
+      name,
+      role,
+    },
+    { onConflict: 'id' },
+  )
+
+  if (profileError) {
+    throw new HttpError(500, `프로필 생성 실패: ${profileError.message}`)
+  }
 }
 
 async function verifyAdmin(serviceClient: SupabaseClient, userId: string): Promise<void> {
@@ -50,6 +101,7 @@ serve(async (req) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase()
+    const trimmedName = name.trim()
     const userRole = role === 'admin' ? 'admin' : 'designer'
 
     const { data: createData, error: createError } =
@@ -57,28 +109,39 @@ serve(async (req) => {
         email: normalizedEmail,
         password,
         email_confirm: true,
-        user_metadata: { name: name.trim() },
+        user_metadata: { name: trimmedName },
       })
 
+    let targetUserId: string | null = createData.user?.id ?? null
+
     if (createError) {
-      throw new HttpError(400, createError.message)
-    }
+      if (!isDuplicateEmailError(createError.message)) {
+        throw new HttpError(400, createError.message)
+      }
 
-    if (createData.user) {
-      const { error: profileError } = await serviceClient.from('profiles').upsert(
-        {
-          id: createData.user.id,
-          email: normalizedEmail,
-          name: name.trim(),
-          role: userRole,
-        },
-        { onConflict: 'id' },
-      )
+      const existingUser = await findUserByEmail(serviceClient, normalizedEmail)
+      if (!existingUser) {
+        throw new HttpError(400, createError.message)
+      }
 
-      if (profileError) {
-        throw new HttpError(500, `프로필 생성 실패: ${profileError.message}`)
+      targetUserId = existingUser.id
+
+      const { error: updateError } = await serviceClient.auth.admin.updateUserById(targetUserId, {
+        password,
+        email_confirm: true,
+        user_metadata: { name: trimmedName },
+      })
+
+      if (updateError) {
+        throw new HttpError(400, `기존 계정 업데이트 실패: ${updateError.message}`)
       }
     }
+
+    if (!targetUserId) {
+      throw new HttpError(500, '사용자 ID를 확인할 수 없습니다.')
+    }
+
+    await upsertProfile(serviceClient, targetUserId, normalizedEmail, trimmedName, userRole)
 
     return jsonResponse({ success: true })
   } catch (error) {
