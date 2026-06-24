@@ -14,6 +14,9 @@ const BATCH_SIZE = 4
 
 interface VerifyRequest {
   project_id: string
+  translation_ids?: string[]
+  reset_results?: boolean
+  finalize?: boolean
 }
 
 interface TranslationRow {
@@ -93,14 +96,24 @@ serve(async (req) => {
     await verifyProjectAccess(serviceClient, user.id, body.project_id)
 
     const apiKey = await getClaudeApiKey(serviceClient)
-    await updateProjectStatus(serviceClient, body.project_id, 'verifying')
+    const shouldFinalize = body.finalize !== false
 
-    const { data: translations, error: translationsError } = await serviceClient
+    if (body.reset_results || shouldFinalize) {
+      await updateProjectStatus(serviceClient, body.project_id, 'verifying')
+    }
+
+    let query = serviceClient
       .from('translations')
       .select('id, project_id, slide_id, field, source, vi_text')
       .eq('project_id', body.project_id)
       .eq('field', NARRATION_FIELD_KEY)
       .not('vi_text', 'is', null)
+
+    if (body.translation_ids?.length) {
+      query = query.in('id', body.translation_ids)
+    }
+
+    const { data: translations, error: translationsError } = await query
 
     if (translationsError) {
       throw new HttpError(500, `번역 조회 실패: ${translationsError.message}`)
@@ -147,14 +160,25 @@ serve(async (req) => {
 
     const translationIds = translationRows.map((row) => row.id)
 
-    const { error: deleteError } = await serviceClient
-      .from('verifications')
-      .delete()
-      .eq('project_id', body.project_id)
-      .in('translation_id', translationIds)
+    if (body.reset_results) {
+      const { error: resetError } = await serviceClient
+        .from('verifications')
+        .delete()
+        .eq('project_id', body.project_id)
 
-    if (deleteError) {
-      throw new HttpError(500, `기존 검증 결과 삭제 실패: ${deleteError.message}`)
+      if (resetError) {
+        throw new HttpError(500, `기존 검증 결과 삭제 실패: ${resetError.message}`)
+      }
+    } else {
+      const { error: deleteError } = await serviceClient
+        .from('verifications')
+        .delete()
+        .eq('project_id', body.project_id)
+        .in('translation_id', translationIds)
+
+      if (deleteError) {
+        throw new HttpError(500, `기존 검증 결과 삭제 실패: ${deleteError.message}`)
+      }
     }
 
     if (rowsToInsert.length > 0) {
@@ -167,14 +191,16 @@ serve(async (req) => {
       }
     }
 
-    await updateProjectStatus(serviceClient, body.project_id, 'verified')
+    if (shouldFinalize) {
+      await updateProjectStatus(serviceClient, body.project_id, 'verified')
 
-    await serviceClient.from('change_logs').insert({
-      project_id: body.project_id,
-      user_id: user.id,
-      action: 'verification_applied',
-      detail: `${rowsToInsert.length}건 역번역 검증 완료`,
-    })
+      await serviceClient.from('change_logs').insert({
+        project_id: body.project_id,
+        user_id: user.id,
+        action: 'verification_applied',
+        detail: `${rowsToInsert.length}건 역번역 검증 완료`,
+      })
+    }
 
     return jsonResponse({
       success: true,

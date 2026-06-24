@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ProgressBar } from '../ui/ProgressBar'
+import { ChunkProgressPanel } from '../ui/ChunkProgressPanel'
 import { Spinner } from '../ui/Spinner'
 import { useToast } from '../../hooks/ToastProvider'
 import { useSlides } from '../../hooks/useSlides'
@@ -15,6 +15,7 @@ import {
   useVerifications,
 } from '../../hooks/useVerification'
 import { isStepAccessible, stepPrerequisiteMessage } from '../../lib/projectStatus'
+import type { ChunkProgress } from '../../lib/chunkProgress'
 import type { Project, Verification, VerificationApplyStatus } from '../../types'
 
 interface VerificationStepProps {
@@ -31,7 +32,7 @@ export function VerificationStep({ project }: VerificationStepProps) {
   const bulkUpdateStatus = useBulkUpdateVerificationStatus()
   const finalize = useFinalizeVerification()
 
-  const [progress, setProgress] = useState(0)
+  const [chunkProgress, setChunkProgress] = useState<ChunkProgress | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [localStatuses, setLocalStatuses] = useState<Record<string, VerificationApplyStatus>>({})
   const [editedViTexts, setEditedViTexts] = useState<Record<string, string>>({})
@@ -77,17 +78,18 @@ export function VerificationStep({ project }: VerificationStepProps) {
     }
 
     setIsRunning(true)
-    setProgress(0)
+    setChunkProgress(null)
     try {
       await runVerification.mutateAsync({
         projectId: project.id,
-        onProgress: setProgress,
+        onChunkProgress: setChunkProgress,
       })
       showToast('역번역 검증이 완료되었습니다.', 'success')
     } catch (err) {
       showToast(err instanceof Error ? err.message : '역번역 검증에 실패했습니다.', 'error')
     } finally {
       setIsRunning(false)
+      setChunkProgress(null)
     }
   }
 
@@ -208,7 +210,11 @@ export function VerificationStep({ project }: VerificationStepProps) {
       )}
 
       {isRunning && (
-        <ProgressBar progress={progress} label={`역번역 검증 진행 중... (${progress}%)`} />
+        <ChunkProgressPanel
+          title="역번역 검증"
+          progress={chunkProgress}
+          hint="나레이션 번역을 4건씩 나누어 역번역·품질 검증합니다."
+        />
       )}
 
       {verifications.length > 0 && (

@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { verifyTranslations } from '../lib/claudeApi'
+import { type ChunkProgress, mergeChunkProgress } from '../lib/chunkProgress'
+import { NARRATION_FIELD_KEY } from '../lib/lang'
 import { supabase } from '../lib/supabase'
 import type { Translation, Verification, VerificationApplyStatus } from '../types'
 import { useAuth } from './useAuth'
 
 const verificationsQueryKey = ['verifications'] as const
+const VERIFY_BATCH_SIZE = 4
 
 export type MatchStatus = 'ok' | 'warn' | 'fail'
 
@@ -32,15 +35,52 @@ export function useRunVerification() {
     mutationFn: async ({
       projectId,
       onProgress,
+      onChunkProgress,
     }: {
       projectId: string
       onProgress?: (percent: number) => void
+      onChunkProgress?: (progress: ChunkProgress) => void
     }): Promise<void> => {
-      onProgress?.(10)
+      const { data: translations, error } = await supabase
+        .from('translations')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('field', NARRATION_FIELD_KEY)
+        .not('vi_text', 'is', null)
+
+      if (error) throw error
+
+      const translationIds = (translations ?? []).map((row) => row.id)
+      if (translationIds.length === 0) {
+        throw new Error('검증할 나레이션 번역이 없습니다.')
+      }
+
       await supabase.from('projects').update({ status: 'verifying' }).eq('id', projectId)
-      onProgress?.(30)
-      await verifyTranslations(projectId)
-      onProgress?.(100)
+
+      const batches: string[][] = []
+      for (let i = 0; i < translationIds.length; i += VERIFY_BATCH_SIZE) {
+        batches.push(translationIds.slice(i, i + VERIFY_BATCH_SIZE))
+      }
+
+      onChunkProgress?.(mergeChunkProgress(0, batches.length, '역번역 검증 준비'))
+      onProgress?.(2)
+
+      for (let i = 0; i < batches.length; i++) {
+        onChunkProgress?.(
+          mergeChunkProgress(i + 1, batches.length, '나레이션 묶음 AI 역번역'),
+        )
+
+        await verifyTranslations(projectId, {
+          translationIds: batches[i],
+          resetResults: i === 0,
+          finalize: i === batches.length - 1,
+        })
+
+        const percent = Math.max(5, Math.round(((i + 1) / batches.length) * 100))
+        onProgress?.(percent)
+      }
+
+      onChunkProgress?.(mergeChunkProgress(batches.length, batches.length, '역번역 검증 완료'))
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })

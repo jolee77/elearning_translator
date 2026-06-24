@@ -14,7 +14,9 @@ import {
 } from '../../hooks/useSlides'
 import { useToast } from '../../hooks/ToastProvider'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
+import { ChunkProgressPanel } from '../ui/ChunkProgressPanel'
 import { Spinner } from '../ui/Spinner'
+import type { ChunkProgress } from '../../lib/chunkProgress'
 import type { Project } from '../../types'
 import type { Slide, SlideType } from '../../types'
 
@@ -184,6 +186,16 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
   }
 
   const isExtracting = extractSlides.isPending
+
+  const extractChunkProgress: ChunkProgress | null = extractProgress
+    ? {
+        current: extractProgress.current,
+        total: extractProgress.total,
+        phase:
+          extractProgress.phase === 'parsing' ? 'PPTX 슬라이드 분석' : '추출 결과 저장',
+        percent: Math.round((extractProgress.current / Math.max(extractProgress.total, 1)) * 100),
+      }
+    : null
   const isBusy = isExtracting || bulkUpdate.isPending || completeExtraction.isPending
   const isExtracted = project.status !== 'uploaded'
 
@@ -239,26 +251,11 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
       </div>
 
       {isExtracting && (
-        <div className="rounded-lg bg-blue-50 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-blue-700">
-            <Spinner className="text-blue-600" />
-            {extractProgress
-              ? extractProgress.phase === 'parsing'
-                ? `슬라이드 분석 중... (${extractProgress.current}/${extractProgress.total})`
-                : `결과 저장 중... (${extractProgress.current}/${extractProgress.total})`
-              : 'PPTX 파일을 분석하고 있습니다...'}
-          </div>
-          {extractProgress && (
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-blue-200">
-              <div
-                className="h-full rounded-full bg-accent transition-all duration-300"
-                style={{
-                  width: `${Math.round((extractProgress.current / extractProgress.total) * 100)}%`,
-                }}
-              />
-            </div>
-          )}
-        </div>
+        <ChunkProgressPanel
+          title="PPTX 추출"
+          progress={extractChunkProgress}
+          hint="원본 PPTX를 슬라이드 단위로 분석한 뒤 DB에 저장합니다."
+        />
       )}
 
       {missingNarrationSlides.length > 0 && (

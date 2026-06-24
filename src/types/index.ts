@@ -112,6 +112,7 @@ export interface SpellingResult {
   original: string
   suggestion: string
   applied: boolean
+  skipped: boolean
   created_at: string
 }
 

@@ -17,6 +17,8 @@ interface TranslateRequest {
   project_id: string
   slide_ids: string[]
   target_lang: string
+  reset_results?: boolean
+  finalize?: boolean
 }
 
 interface TranslationItem {
@@ -107,7 +109,11 @@ serve(async (req) => {
     await verifyProjectAccess(serviceClient, user.id, body.project_id)
 
     const apiKey = await getClaudeApiKey(serviceClient)
-    await updateProjectStatus(serviceClient, body.project_id, 'translating')
+    const shouldFinalize = body.finalize !== false
+
+    if (body.reset_results || shouldFinalize) {
+      await updateProjectStatus(serviceClient, body.project_id, 'translating')
+    }
 
     const { data: slides, error: slidesError } = await serviceClient
       .from('slides')
@@ -160,14 +166,25 @@ serve(async (req) => {
       }
     }
 
-    const { error: deleteError } = await serviceClient
-      .from('translations')
-      .delete()
-      .eq('project_id', body.project_id)
-      .in('slide_id', body.slide_ids)
+    if (body.reset_results) {
+      const { error: resetError } = await serviceClient
+        .from('translations')
+        .delete()
+        .eq('project_id', body.project_id)
 
-    if (deleteError) {
-      throw new HttpError(500, `기존 번역 결과 삭제 실패: ${deleteError.message}`)
+      if (resetError) {
+        throw new HttpError(500, `기존 번역 결과 삭제 실패: ${resetError.message}`)
+      }
+    } else {
+      const { error: deleteError } = await serviceClient
+        .from('translations')
+        .delete()
+        .eq('project_id', body.project_id)
+        .in('slide_id', body.slide_ids)
+
+      if (deleteError) {
+        throw new HttpError(500, `기존 번역 결과 삭제 실패: ${deleteError.message}`)
+      }
     }
 
     if (rowsToInsert.length > 0) {
@@ -178,14 +195,16 @@ serve(async (req) => {
       }
     }
 
-    await updateProjectStatus(serviceClient, body.project_id, 'translated')
+    if (shouldFinalize) {
+      await updateProjectStatus(serviceClient, body.project_id, 'translated')
 
-    await serviceClient.from('change_logs').insert({
-      project_id: body.project_id,
-      user_id: user.id,
-      action: 'translation_done',
-      detail: `${rowsToInsert.length}건 번역 완료 (${body.target_lang})`,
-    })
+      await serviceClient.from('change_logs').insert({
+        project_id: body.project_id,
+        user_id: user.id,
+        action: 'translation_done',
+        detail: `${rowsToInsert.length}건 번역 완료 (${body.target_lang})`,
+      })
+    }
 
     return jsonResponse({
       success: true,

@@ -6,6 +6,7 @@ import {
   getLangConfig,
   NARRATION_FIELD_KEY,
 } from '../lib/lang'
+import { type ChunkProgress, mergeChunkProgress } from '../lib/chunkProgress'
 import { supabase } from '../lib/supabase'
 import type { Translation } from '../types'
 
@@ -48,11 +49,13 @@ export function useRunTranslation() {
       slideIds,
       targetLang,
       onProgress,
+      onChunkProgress,
     }: {
       projectId: string
       slideIds: string[]
       targetLang: string
       onProgress?: (percent: number) => void
+      onChunkProgress?: (progress: ChunkProgress) => void
     }): Promise<void> => {
       if (slideIds.length === 0) {
         throw new Error('번역할 슬라이드가 없습니다.')
@@ -65,11 +68,21 @@ export function useRunTranslation() {
         batches.push(slideIds.slice(i, i + TRANSLATE_BATCH_SIZE))
       }
 
+      onChunkProgress?.(mergeChunkProgress(0, batches.length, '번역 준비'))
+
       for (let i = 0; i < batches.length; i++) {
-        await translateSlides(projectId, batches[i], targetLang)
+        onChunkProgress?.(mergeChunkProgress(i + 1, batches.length, '슬라이드 묶음 AI 번역'))
+
+        await translateSlides(projectId, batches[i], targetLang, {
+          resetResults: i === 0,
+          finalize: i === batches.length - 1,
+        })
+
         const percent = Math.round(((i + 1) / batches.length) * 100)
         onProgress?.(percent)
       }
+
+      onChunkProgress?.(mergeChunkProgress(batches.length, batches.length, '번역 완료'))
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })

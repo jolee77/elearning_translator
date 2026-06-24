@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ProgressBar } from '../ui/ProgressBar'
+import { ChunkProgressPanel } from '../ui/ChunkProgressPanel'
 import { Spinner } from '../ui/Spinner'
 import { useToast } from '../../hooks/ToastProvider'
 import { useSlides } from '../../hooks/useSlides'
@@ -14,6 +14,7 @@ import {
 import { fieldKeyLabel } from '../../lib/slideFields'
 import { getLangConfig } from '../../lib/lang'
 import { isStepAccessible, stepPrerequisiteMessage } from '../../lib/projectStatus'
+import type { ChunkProgress } from '../../lib/chunkProgress'
 import type { Project, Translation } from '../../types'
 
 interface TranslationStepProps {
@@ -32,7 +33,7 @@ export function TranslationStep({ project }: TranslationStepProps) {
   const updateTranslation = useUpdateTranslation()
   const completeTranslation = useCompleteTranslation()
 
-  const [progress, setProgress] = useState(0)
+  const [chunkProgress, setChunkProgress] = useState<ChunkProgress | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [localTexts, setLocalTexts] = useState<Record<string, string>>({})
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
@@ -74,13 +75,13 @@ export function TranslationStep({ project }: TranslationStepProps) {
     }
 
     setIsRunning(true)
-    setProgress(0)
+    setChunkProgress(null)
     try {
       await runTranslation.mutateAsync({
         projectId: project.id,
         slideIds: eligibleSlides.map((s) => s.id),
         targetLang: project.target_lang,
-        onProgress: setProgress,
+        onChunkProgress: setChunkProgress,
       })
       setDirtyIds(new Set())
       showToast('번역이 완료되었습니다.', 'success')
@@ -88,6 +89,7 @@ export function TranslationStep({ project }: TranslationStepProps) {
       showToast(err instanceof Error ? err.message : '번역에 실패했습니다.', 'error')
     } finally {
       setIsRunning(false)
+      setChunkProgress(null)
     }
   }
 
@@ -174,7 +176,11 @@ export function TranslationStep({ project }: TranslationStepProps) {
       )}
 
       {isRunning && (
-        <ProgressBar progress={progress} label={`번역 진행 중... (${progress}%)`} />
+        <ChunkProgressPanel
+          title="AI 번역"
+          progress={chunkProgress}
+          hint={`${eligibleSlides.length}개 슬라이드를 3개씩 나누어 번역합니다.`}
+        />
       )}
 
       {isLoading ? (
