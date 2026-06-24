@@ -46,6 +46,13 @@ npm run build
 
 ## 최근 수정 (2026-06-24)
 
+### 버그 수정·운영
+- **사용자 등록**: Edge Function 오류 메시지 실제 내용 표시 (`invokeEdgeFunction` 공통화)
+- **사용자 등록**: 관리자 `profiles` RLS 추가 — 전체 회원 목록 조회·역할 변경 가능
+- **사용자 등록**: 이미 auth에만 있는 이메일은 프로필 복구·비밀번호 갱신 후 등록 완료
+- **전문가 검증 링크**: `extensions.gen_random_bytes` 사용 (토큰 생성 오류 수정)
+- **전문가 화면**: 필드 순서 — 한국어 원문 → 번역문 → 역번역
+
 ### 워크플로·기능
 - **5단계 UI**: 번역·역번역 검증 Step 3 통합 (`TranslationVerificationStep`)
 - **싱크 마커**: 나레이션 `#1` `#2` 유지, 화면텍스트 추출 시 `#N` 단독 박스 제외
@@ -55,7 +62,9 @@ npm run build
 
 ### Supabase 배포 (완료)
 - 마이그레이션 `20250624180000_workflow_updates.sql` 적용됨
-- `register-user` Edge Function 배포됨
+- 마이그레이션 `20250624200000_fix_gen_random_bytes.sql` 적용됨
+- 마이그레이션 `20250624210000_profiles_admin_access.sql` 적용됨
+- `register-user` Edge Function 배포됨 (중복 이메일 복구 포함)
 
 ### 이전 (2026-06)
 - PPTX 추출: `spTree` 기준 텍스트 도형 수집, 화면텍스트 JSON 파싱

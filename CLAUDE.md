@@ -182,9 +182,10 @@ const KO_CPM = 320
 ```
 
 ## 전문가 검증 방식
-- expert_reviews 테이블에 token(hex 32bytes) 생성
+- expert_reviews 테이블에 token(hex 32bytes) 생성 — `extensions.gen_random_bytes` 사용
 - /review/:token URL을 설계담당자가 수동으로 전문가에게 공유
 - 전문가는 로그인 없이 해당 URL로 접속
+- 상세 패널 필드 순서: 한국어 원문 → 번역문(수정 가능) → 역번역
 - get_expert_review_by_token(token) RPC로 데이터 조회
 - save_expert_review_item(token, ...) RPC로 저장 (RLS 우회)
 - 전문가가 모든 항목 완료 시 expert_reviews.status = 'done'
@@ -217,23 +218,36 @@ const KO_CPM = 320
 
 ## 구현 현황 (2026-06-24)
 
-### 이번 작업에서 완료 (커밋됨, 배포 전)
+### 오늘 추가 완료 (저녁)
+- [x] 사용자 등록: Edge Function 오류 메시지 표시 (`src/lib/edgeFunction.ts`)
+- [x] 사용자 등록: 관리자 전체 프로필 조회 RLS (`20250624210000_profiles_admin_access.sql`)
+- [x] 사용자 등록: 중복 이메일 시 프로필 복구 (`register-user` Edge Function)
+- [x] 전문가 검증 링크: `extensions.gen_random_bytes` (`20250624200000_fix_gen_random_bytes.sql`)
+- [x] 전문가 화면: 원문 → 번역문 → 역번역 순서
+
+### 이번 작업에서 완료 (커밋됨, 배포됨)
 - [x] PPTX 추출: 화면텍스트에서 싱크 마커(`#1`, `#2`…) 제외, 나레이션에는 유지 (`isSyncMarkerOnly`)
 - [x] Step 3: 번역·역번역 검증 통합 (`TranslationVerificationStep`)
 - [x] 전문가 검증: 승인/수정완료 버튼 제거 → 번역문+코멘트+완료 단일 저장
-- [x] 전문가 화면: 슬라이드 표 + 클릭 상세, 역번역 결과 표시
+- [x] 전문가 화면: 슬라이드 표 + 클릭 상세, 원문 → 번역문 → 역번역 순서
 - [x] 설계자 화면: 슬라이드 검토 현황 표 + 변경 항목 표시
 - [x] 관리자: 프로젝트 삭제 (`admin_delete_project` RPC)
 - [x] 관리자: 사용자 초대 → 등록 (`register-user` Edge Function, 역할 선택)
 - [x] `AutoResizeTextarea` 컴포넌트
 - [x] DB 마이그레이션: `20250624180000_workflow_updates.sql`
+- [x] DB 마이그레이션: `20250624200000_fix_gen_random_bytes.sql`
+- [x] DB 마이그레이션: `20250624210000_profiles_admin_access.sql`
 
-### 저녁 배포 전 남은 작업
+### 저녁 배포 (완료)
+- [x] Supabase: 마이그레이션 `20250624200000`, `20250624210000` 적용
+- [x] Supabase: `register-user` Edge Function 재배포
+- [x] Vercel 배포: `main` 푸시 완료
+
+### 이전 배포 항목
 - [x] Supabase: 마이그레이션 `20250624180000` 적용 (`supabase db push` 또는 SQL 실행)
-- [x] Supabase: `register-user` Edge Function 배포 (`supabase functions deploy register-user`)
+- [x] Supabase: `register-user` Edge Function 최초 배포
 - [x] nextBMS 디자인: `index.css`에 `nb-*` 유틸 클래스 추가, `Layout.tsx` 등 전역 스타일 반영
 - [x] 기존 `VerificationStep.tsx` / `TranslationStep.tsx` 정리 (미사용 시 제거)
-- [ ] Vercel 배포: `main` 푸시 후 동작 확인
 
 ### 완료 (이전)
 - [x] Tailwind CSS, Supabase Auth, 라우팅, Layout
