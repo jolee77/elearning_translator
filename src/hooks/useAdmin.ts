@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { invokeEdgeFunction } from '../lib/edgeFunction'
 import { supabase } from '../lib/supabase'
 import type { Profile, Project, Settings, UserRole } from '../types'
 import { useAuth } from './useAuth'
@@ -127,27 +128,12 @@ export function useRegisterUser() {
       password: string
       role: UserRole
     }): Promise<void> => {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const token = sessionData.session?.access_token
-      if (!token) throw new Error('로그인이 필요합니다.')
-
-      const response = await supabase.functions.invoke('register-user', {
-        body: {
-          email: email.trim(),
-          name: name.trim(),
-          password,
-          role,
-        },
+      await invokeEdgeFunction<{ success: boolean }>('register-user', {
+        email: email.trim(),
+        name: name.trim(),
+        password,
+        role,
       })
-
-      if (response.error) {
-        throw new Error(response.error.message)
-      }
-
-      const body = response.data as { error?: string } | null
-      if (body?.error) {
-        throw new Error(body.error)
-      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profilesQueryKey })
