@@ -37,7 +37,7 @@ export function ProjectDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-20">
+      <div className="nb-empty-state">
         <Spinner className="text-gray-400" />
         <p className="text-sm text-gray-500">프로젝트를 불러오는 중...</p>
       </div>
@@ -46,9 +46,9 @@ export function ProjectDetailPage() {
 
   if (error || !project) {
     return (
-      <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
+      <div className="nb-alert nb-alert--error">
         프로젝트를 찾을 수 없습니다.
-        <Link to="/dashboard" className="ml-2 font-medium underline">
+        <Link to="/dashboard" className="nb-link ml-2">
           대시보드로 돌아가기
         </Link>
       </div>
@@ -56,8 +56,8 @@ export function ProjectDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-6">
+      <div className="nb-page-toolbar">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">{project.title}</h2>
           <p className="mt-1 text-sm text-gray-500">
@@ -67,7 +67,7 @@ export function ProjectDetailPage() {
         <StatusBadge status={project.status} />
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+      <div className="nb-card p-4 sm:p-6">
         <StepNav
           status={project.status}
           activeStep={viewStep}
@@ -79,7 +79,7 @@ export function ProjectDetailPage() {
             <button
               type="button"
               onClick={() => setViewStep(currentStep)}
-              className="font-medium text-accent hover:underline"
+              className="nb-link font-medium"
             >
               {currentStep}단계로 이동
             </button>
@@ -88,13 +88,13 @@ export function ProjectDetailPage() {
       </div>
 
       {viewStep === 1 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="nb-card p-4 sm:p-6">
           <ExtractionStep project={project} />
         </div>
       )}
 
       {viewStep === 2 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="nb-card p-4 sm:p-6">
           <SpellingStep project={project} />
         </div>
       )}

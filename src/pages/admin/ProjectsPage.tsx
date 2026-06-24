@@ -59,7 +59,7 @@ export function ProjectsPage() {
   }
 
   return (
-    <div className="nb-app-content">
+    <div>
       <div className="nb-page-toolbar">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">전체 프로젝트</h2>

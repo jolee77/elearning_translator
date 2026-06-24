@@ -70,24 +70,21 @@ export function ResetPasswordPage() {
 
   if (checking) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary to-primary-700">
-        <Spinner className="text-white" size="md" />
+      <div className="nb-login-shell">
+        <Spinner className="text-gray-400" />
       </div>
     )
   }
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary to-primary-700 px-4">
-        <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl text-center">
-          <h1 className="text-xl font-bold text-primary">링크가 만료되었습니다</h1>
-          <p className="mt-3 text-sm text-gray-600">
-            비밀번호 재설정 메일을 다시 요청해 주세요.
-          </p>
-          <Link
-            to="/login"
-            className="mt-6 inline-block rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white"
-          >
+      <div className="nb-login-shell">
+        <div className="nb-login-card w-full max-w-md p-8 text-center">
+          <div className="nb-login-brand">
+            <h1>링크가 만료되었습니다</h1>
+            <p>비밀번호 재설정 메일을 다시 요청해 주세요.</p>
+          </div>
+          <Link to="/login" className="nb-btn-primary mt-4 inline-flex">
             로그인으로 돌아가기
           </Link>
         </div>
@@ -96,16 +93,16 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary to-primary-700 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-primary">새 비밀번호 설정</h1>
-          <p className="mt-2 text-sm text-gray-500">사용할 비밀번호를 입력해 주세요.</p>
+    <div className="nb-login-shell">
+      <div className="nb-login-card w-full max-w-md p-8">
+        <div className="nb-login-brand">
+          <h1>새 비밀번호 설정</h1>
+          <p>사용할 비밀번호를 입력해 주세요.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="password" className="nb-field-label">
               새 비밀번호
             </label>
             <input
@@ -115,13 +112,13 @@ export function ResetPasswordPage() {
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              className="nb-input mt-1 w-full"
               placeholder="8자 이상"
             />
           </div>
 
           <div>
-            <label htmlFor="confirm" className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="confirm" className="nb-field-label">
               비밀번호 확인
             </label>
             <input
@@ -131,7 +128,7 @@ export function ResetPasswordPage() {
               minLength={8}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              className="nb-input mt-1 w-full"
               placeholder="비밀번호 다시 입력"
             />
           </div>
@@ -139,7 +136,7 @@ export function ResetPasswordPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-600 disabled:opacity-50"
+            className="nb-btn-primary w-full justify-center"
           >
             {submitting && <Spinner className="text-white" />}
             {submitting ? '저장 중...' : '비밀번호 저장'}

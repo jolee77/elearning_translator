@@ -169,12 +169,12 @@ export function DoneStep({ project }: DoneStepProps) {
     return (
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">Step 6. 완료</h3>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h3 className="nb-step-title">Step 5. 완료</h3>
+          <p className="nb-step-desc">
             전문가 검증이 완료되면 산출물을 다운로드할 수 있습니다.
           </p>
         </div>
-        <div className="rounded-xl border border-dashed border-gray-200 bg-white py-16 text-center">
+        <div className="nb-empty-state">
           <p className="text-sm text-gray-500">아직 프로젝트가 완료되지 않았습니다.</p>
           <p className="mt-1 text-xs text-gray-400">
             전문가 검증이 완료되면 이 단계에서 산출물을 다운로드할 수 있습니다.
@@ -187,13 +187,13 @@ export function DoneStep({ project }: DoneStepProps) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-base font-semibold text-gray-900">Step 6. 완료</h3>
-        <p className="mt-0.5 text-sm text-gray-500">
+        <h3 className="nb-step-title">Step 5. 완료</h3>
+        <p className="nb-step-desc">
           전문가 검증이 완료되었습니다. 산출물을 다운로드할 수 있습니다.
         </p>
       </div>
 
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+      <div className="nb-alert nb-alert--success">
         <div className="flex items-center gap-2">
           <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -209,7 +209,7 @@ export function DoneStep({ project }: DoneStepProps) {
       </div>
 
       {items.length > 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-4">
+        <div className="nb-card px-4 py-4">
           <h4 className="text-sm font-semibold text-gray-800">전문가 검토 통계</h4>
           <div className="mt-3 flex flex-wrap gap-4">
             <div className="rounded-lg bg-emerald-50 px-4 py-2">
@@ -228,7 +228,7 @@ export function DoneStep({ project }: DoneStepProps) {
         </div>
       )}
 
-      <div className="rounded-xl border border-gray-200 bg-white px-4 py-4">
+      <div className="nb-card px-4 py-4">
         <h4 className="text-sm font-semibold text-gray-800">변경 이력</h4>
         {isLoading ? (
           <p className="mt-3 text-sm text-gray-500">변경 이력을 불러오는 중...</p>
@@ -257,7 +257,7 @@ export function DoneStep({ project }: DoneStepProps) {
         )}
       </div>
 
-      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-4">
+      <div className="nb-card nb-input-surface px-4 py-4">
         <h4 className="text-sm font-semibold text-gray-800">산출물 다운로드</h4>
         <p className="mt-1 text-xs text-gray-500">
           VN 스토리보드(PPTX), 번역 결과(엑셀), 전체 산출물(ZIP)을 다운로드할 수 있습니다.
@@ -267,7 +267,7 @@ export function DoneStep({ project }: DoneStepProps) {
             type="button"
             disabled={isBusy || !project.source_pptx_url || translations.length === 0}
             onClick={handleDownloadPptx}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+            className="nb-btn-secondary"
           >
             {downloading === 'pptx' && <Spinner />}
             {downloading === 'pptx' ? '생성 중...' : 'VN 스토리보드 다운로드 (PPTX)'}
@@ -276,7 +276,7 @@ export function DoneStep({ project }: DoneStepProps) {
             type="button"
             disabled={isBusy || slides.length === 0 || translations.length === 0}
             onClick={handleDownloadXlsx}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+            className="nb-btn-secondary"
           >
             {downloading === 'xlsx' && <Spinner />}
             {downloading === 'xlsx' ? '생성 중...' : '번역 결과 다운로드 (XLSX)'}
@@ -290,7 +290,7 @@ export function DoneStep({ project }: DoneStepProps) {
               translations.length === 0
             }
             onClick={handleDownloadZip}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#162B52] px-4 py-2 text-sm font-medium text-white hover:bg-[#1e3a6e] disabled:cursor-not-allowed disabled:bg-gray-300"
+            className="nb-btn-primary"
           >
             {downloading === 'zip' && <Spinner className="text-white" />}
             {downloading === 'zip' ? '생성 중...' : '변경이력 포함 전체 다운로드 (ZIP)'}

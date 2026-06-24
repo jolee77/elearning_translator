@@ -76,7 +76,7 @@ export function UsersPage() {
   }
 
   return (
-    <div className="nb-app-content">
+    <div>
       <div className="nb-page-toolbar">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">사용자 관리</h2>

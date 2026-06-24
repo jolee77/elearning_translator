@@ -29,9 +29,9 @@ export function StepNav({ status, activeStep, onStepClick }: StepNavProps) {
             <div
               className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
                 isCompleted
-                  ? 'bg-accent text-white'
+                  ? 'bg-[#1677ff] text-white'
                   : isCurrent
-                    ? 'bg-primary text-white ring-4 ring-primary/20'
+                    ? 'bg-[#162b52] text-white ring-4 ring-[#162b52]/20'
                     : canNavigate
                       ? 'bg-gray-200 text-gray-600'
                       : 'bg-gray-100 text-gray-400'
@@ -61,7 +61,7 @@ export function StepNav({ status, activeStep, onStepClick }: StepNavProps) {
                     onClick={() => onStepClick(step)}
                     disabled={!canNavigate}
                     title={!canNavigate ? '이전 단계를 먼저 완료해 주세요' : label}
-                    className={`rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+                    className={`rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1677ff]/50 ${
                       canNavigate ? 'cursor-pointer hover:opacity-90' : 'cursor-not-allowed'
                     }`}
                     aria-current={isCurrent ? 'step' : undefined}
@@ -73,7 +73,7 @@ export function StepNav({ status, activeStep, onStepClick }: StepNavProps) {
                 )}
                 <span
                   className={`mt-2 hidden text-center text-xs font-medium xl:block ${
-                    isCurrent ? 'text-primary' : isCompleted ? 'text-gray-700' : 'text-gray-400'
+                    isCurrent ? 'text-[#162b52]' : isCompleted ? 'text-gray-700' : 'text-gray-400'
                   }`}
                 >
                   {label}
@@ -83,7 +83,7 @@ export function StepNav({ status, activeStep, onStepClick }: StepNavProps) {
               {!isLast && (
                 <div
                   className={`mx-2 h-0.5 flex-1 ${
-                    isCompleted ? 'bg-accent' : 'bg-gray-200'
+                    isCompleted ? 'bg-[#1677ff]' : 'bg-gray-200'
                   }`}
                 />
               )}
@@ -92,7 +92,7 @@ export function StepNav({ status, activeStep, onStepClick }: StepNavProps) {
         })}
       </ol>
 
-      <p className="mt-3 text-center text-sm font-medium text-primary xl:hidden">
+      <p className="mt-3 text-center text-sm font-medium text-[#162b52] xl:hidden">
         {PROJECT_STEPS[displayStep - 1].label}
       </p>
     </nav>

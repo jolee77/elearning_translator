@@ -288,6 +288,130 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
+.nb-login-brand {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.nb-login-brand h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--nb-primary);
+}
+
+.nb-login-brand p {
+  margin-top: 8px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.nb-link {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--nb-accent);
+  text-decoration: none;
+}
+
+.nb-link:hover {
+  text-decoration: underline;
+}
+
+.nb-help-text {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.nb-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.nb-project-card {
+  display: block;
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+  background: #fff;
+  padding: 20px;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.nb-project-card:hover {
+  border-color: var(--nb-input-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.nb-project-card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.nb-project-card:hover h3 {
+  color: var(--nb-accent);
+}
+
+.nb-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 2px dashed #d9d9d9;
+  background: #fafafa;
+  padding: 48px 24px;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.nb-dropzone--active {
+  border-color: var(--nb-accent);
+  background: var(--nb-input-bg);
+}
+
+.nb-dropzone--ready {
+  border-color: #b7eb8f;
+  background: #f6ffed;
+}
+
+.nb-filter-pill {
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.nb-filter-pill--active {
+  background: var(--nb-primary);
+  color: #fff;
+}
+
+.nb-filter-pill--inactive {
+  background: #f5f5f5;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.nb-filter-pill--inactive:hover {
+  background: #e8e8e8;
+}
+
+.nb-step-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.nb-step-desc {
+  margin-top: 2px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
 /* Layout shell */
 .nb-layout {
   display: flex;

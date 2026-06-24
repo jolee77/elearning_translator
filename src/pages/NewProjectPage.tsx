@@ -81,22 +81,32 @@ export function NewProjectPage() {
     }
   }
 
+  const dropzoneClass = isDragging
+    ? 'nb-dropzone nb-dropzone--active'
+    : pptxFile
+      ? 'nb-dropzone nb-dropzone--ready'
+      : 'nb-dropzone'
+
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">새 프로젝트</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          스토리보드 PPTX를 업로드하여 번역 프로젝트를 시작합니다.
-        </p>
+      <div className="nb-page-toolbar">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">새 프로젝트</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            스토리보드 PPTX를 업로드하여 번역 프로젝트를 시작합니다.
+          </p>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="mb-4 text-sm font-semibold text-gray-900">프로젝트 정보</h3>
+        <div className="nb-card nb-input-surface p-6">
+          <h3 className="mb-4 text-sm font-semibold" style={{ color: '#0958d9' }}>
+            프로젝트 정보
+          </h3>
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="courseName" className="mb-1 block text-sm font-medium text-gray-700">
+              <label htmlFor="courseName" className="nb-field-label">
                 과정명
               </label>
               <input
@@ -105,13 +115,13 @@ export function NewProjectPage() {
                 required
                 value={courseName}
                 onChange={(e) => setCourseName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                className="nb-input mt-1 w-full"
                 placeholder="예: PLC 기초과정"
               />
             </div>
 
             <div>
-              <label htmlFor="episodeName" className="mb-1 block text-sm font-medium text-gray-700">
+              <label htmlFor="episodeName" className="nb-field-label">
                 회차명
               </label>
               <input
@@ -120,20 +130,20 @@ export function NewProjectPage() {
                 required
                 value={episodeName}
                 onChange={(e) => setEpisodeName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                className="nb-input mt-1 w-full"
                 placeholder="예: 1회차 - 시스템 개요"
               />
             </div>
 
             <div>
-              <label htmlFor="targetLang" className="mb-1 block text-sm font-medium text-gray-700">
+              <label htmlFor="targetLang" className="nb-field-label">
                 목표 언어
               </label>
               <select
                 id="targetLang"
                 value={targetLang}
                 onChange={(e) => setTargetLang(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                className="nb-input mt-1 w-full"
               >
                 {TARGET_LANGUAGES.map((lang) => (
                   <option key={lang.code} value={lang.code}>
@@ -145,8 +155,8 @@ export function NewProjectPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="mb-4 text-sm font-semibold text-gray-900">PPTX 파일</h3>
+        <div className="nb-card p-6">
+          <h3 className="nb-step-title mb-4">PPTX 파일</h3>
 
           <div
             onDragOver={(e) => {
@@ -155,13 +165,7 @@ export function NewProjectPage() {
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            className={`relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-12 transition-colors ${
-              isDragging
-                ? 'border-accent bg-accent/5'
-                : pptxFile
-                  ? 'border-emerald-300 bg-emerald-50'
-                  : 'border-gray-300 bg-gray-50 hover:border-gray-400'
-            }`}
+            className={dropzoneClass}
           >
             {pptxFile ? (
               <>
@@ -209,7 +213,7 @@ export function NewProjectPage() {
                   PPTX 파일을 여기에 드래그하세요
                 </p>
                 <p className="mt-1 text-xs text-gray-500">또는</p>
-                <label className="mt-3 cursor-pointer rounded-lg bg-white px-4 py-2 text-sm font-medium text-accent shadow-sm ring-1 ring-gray-200 transition-colors hover:bg-gray-50">
+                <label className="nb-btn-secondary mt-3 cursor-pointer">
                   파일 선택
                   <input
                     type="file"
@@ -227,30 +231,30 @@ export function NewProjectPage() {
         </div>
 
         {createProject.isPending && (
-          <div className="rounded-lg bg-blue-50 px-4 py-3">
-            <div className="mb-2 flex items-center gap-2 text-sm text-blue-700">
-              <Spinner className="text-blue-600" />
+          <div className="nb-alert nb-alert--warning">
+            <div className="mb-2 flex items-center gap-2">
+              <Spinner />
               <span>업로드 중...</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-blue-200">
-              <div className="h-full w-full animate-pulse rounded-full bg-accent" />
+            <div className="h-1.5 overflow-hidden rounded-full bg-[#ffe58f]">
+              <div className="h-full w-full animate-pulse rounded-full bg-[#1677ff]" />
             </div>
           </div>
         )}
 
-        <div className="flex justify-end gap-3">
+        <div className="nb-form-actions">
           <button
             type="button"
             onClick={() => navigate('/dashboard')}
             disabled={createProject.isPending}
-            className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+            className="nb-btn-secondary"
           >
             취소
           </button>
           <button
             type="submit"
             disabled={createProject.isPending || !pptxFile}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-600 disabled:opacity-50"
+            className="nb-btn-primary"
           >
             {createProject.isPending && <Spinner className="text-white" />}
             {createProject.isPending ? '업로드 중...' : '프로젝트 생성'}

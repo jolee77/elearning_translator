@@ -201,10 +201,10 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="nb-page-toolbar">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">Step 1. 추출 확인</h3>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h3 className="nb-step-title">Step 1. 추출 확인</h3>
+          <p className="nb-step-desc">
             PPTX에서 슬라이드별 텍스트를 추출하고 내용을 확인·수정합니다.
           </p>
         </div>
@@ -216,7 +216,7 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
               runExtraction()
             }}
             disabled={isBusy || !project.source_pptx_url}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+            className="nb-btn-secondary"
           >
             {isExtracting && <Spinner />}
             {isExtracting ? '추출 중...' : '다시 추출'}
@@ -225,7 +225,7 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
             type="button"
             onClick={handleSaveEdits}
             disabled={isBusy || localSlides.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+            className="nb-btn-secondary"
           >
             {bulkUpdate.isPending && <Spinner />}
             {bulkUpdate.isPending ? '저장 중...' : '변경사항 저장'}
@@ -234,7 +234,7 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
             type="button"
             onClick={handleDownloadXlsx}
             disabled={localSlides.length === 0}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+            className="nb-btn-secondary"
           >
             XLSX 다운로드
           </button>
@@ -242,7 +242,7 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
             type="button"
             onClick={handleComplete}
             disabled={isBusy || localSlides.length === 0 || isExtracted}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-600 disabled:opacity-50"
+            className="nb-btn-primary"
           >
             {completeExtraction.isPending && <Spinner className="text-white" />}
             {completeExtraction.isPending ? '처리 중...' : '추출 완료'}
@@ -259,7 +259,7 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
       )}
 
       {missingNarrationSlides.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="nb-alert nb-alert--warning">
           <p className="text-sm font-medium text-amber-800">
             나레이션이 없는 슬라이드 {missingNarrationSlides.length}개
           </p>
@@ -275,10 +275,10 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
             key={filter.value}
             type="button"
             onClick={() => setTypeFilter(filter.value)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`nb-filter-pill ${
               typeFilter === filter.value
-                ? 'bg-primary text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'nb-filter-pill--active'
+                : 'nb-filter-pill--inactive'
             }`}
           >
             {filter.label}
@@ -290,40 +290,36 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
       </div>
 
       {slidesLoading || isExtracting ? (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-16">
+        <div className="nb-empty-state">
           <Spinner className="text-gray-400" />
           <p className="text-sm text-gray-500">슬라이드 데이터를 불러오는 중...</p>
         </div>
       ) : localSlides.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-200 bg-white py-16 text-center">
+        <div className="nb-empty-state">
           <p className="text-sm text-gray-500">추출된 슬라이드가 없습니다.</p>
           <button
             type="button"
             onClick={runExtraction}
             disabled={!project.source_pptx_url}
-            className="mt-3 text-sm font-medium text-accent hover:underline disabled:opacity-50"
+            className="nb-link mt-3"
           >
             PPTX 추출 시작
           </button>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="nb-card nb-h-scroll overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50">
+            <table className="nb-table">
+              <thead>
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">슬라이드번호</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">유형</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">섹션</th>
-                  <th className="min-w-[240px] px-4 py-3 text-left font-medium text-gray-600">
-                    화면텍스트
-                  </th>
-                  <th className="min-w-[240px] px-4 py-3 text-left font-medium text-gray-600">
-                    나레이션
-                  </th>
+                  <th>슬라이드번호</th>
+                  <th>유형</th>
+                  <th>섹션</th>
+                  <th className="min-w-[240px]">화면텍스트</th>
+                  <th className="min-w-[240px]">나레이션</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {pagedSlides.map((slide) => {
                   const noNarration = !slide.narration?.trim()
                   return (
@@ -335,7 +331,7 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
                         {slide.slide_num}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                        <span className="nb-badge">
                           {SLIDE_TYPE_LABELS[slide.slide_type]}
                         </span>
                       </td>
@@ -346,7 +342,7 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
                           onChange={(e) =>
                             updateLocalSlide(slide.id, 'screen_num', e.target.value)
                           }
-                          className="w-full min-w-[80px] rounded border border-gray-200 px-2 py-1 text-xs focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20"
+                          className="nb-input w-full min-w-[80px] text-xs"
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -356,7 +352,7 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
                             updateLocalSlide(slide.id, 'screen_text', e.target.value)
                           }
                           rows={3}
-                          className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20"
+                          className="nb-textarea w-full text-xs"
                         />
                       </td>
                       <td className="px-4 py-3">

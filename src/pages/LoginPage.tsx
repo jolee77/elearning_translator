@@ -67,22 +67,23 @@ export function LoginPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary to-primary-700">
-        <Spinner className="text-white" size="md" />
+      <div className="nb-login-shell">
+        <Spinner className="text-gray-400" />
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary to-primary-700 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-primary">이러닝 번역기</h1>
+    <div className="nb-login-shell">
+      <div className="nb-login-card w-full max-w-md p-8">
+        <div className="nb-login-brand">
+          <h1>이러닝 번역기</h1>
+          <p>PPTX 번역 시스템</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="email" className="nb-field-label">
               이메일
             </label>
             <input
@@ -91,13 +92,13 @@ export function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              className="nb-input mt-1 w-full"
               placeholder="user@example.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="password" className="nb-field-label">
               비밀번호
             </label>
             <input
@@ -107,7 +108,7 @@ export function LoginPage() {
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              className="nb-input mt-1 w-full"
               placeholder="비밀번호"
             />
           </div>
@@ -115,7 +116,7 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={submitting || sendingReset}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-600 disabled:opacity-50"
+            className="nb-btn-primary w-full justify-center"
           >
             {submitting && <Spinner className="text-white" />}
             {submitting ? '처리 중...' : '로그인'}
@@ -125,13 +126,13 @@ export function LoginPage() {
             type="button"
             onClick={handleForgotPassword}
             disabled={submitting || sendingReset}
-            className="w-full text-center text-sm text-gray-500 transition-colors hover:text-accent disabled:opacity-50"
+            className="w-full text-center text-sm text-gray-500 transition-colors hover:text-[#1677ff] disabled:opacity-50"
           >
             {sendingReset ? '재설정 메일 발송 중...' : '비밀번호를 잊으셨나요?'}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-gray-400">
+        <p className="nb-help-text mt-6 text-center">
           계정은 관리자가 등록합니다. 문의는 관리자에게 연락해 주세요.
         </p>
       </div>

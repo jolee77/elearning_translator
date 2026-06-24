@@ -245,7 +245,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
   const renderMainContent = () => {
     if (slidesLoading || resultsLoading) {
       return (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-16">
+        <div className="nb-empty-state">
           <Spinner className="text-gray-400" />
           <p className="text-sm text-gray-500">데이터를 불러오는 중...</p>
         </div>
@@ -254,7 +254,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
 
     if (isRunning) {
       return (
-        <div className="rounded-xl border border-blue-100 bg-white py-16 text-center">
+        <div className="nb-empty-state">
           <p className="text-sm text-gray-600">
             추출된 텍스트를 검사 중입니다. 슬라이드 내용은 아직 변경되지 않습니다.
           </p>
@@ -266,12 +266,12 @@ export function SpellingStep({ project }: SpellingStepProps) {
       return (
         <div className="space-y-4">
           {pendingReview.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+            <div className="nb-summary-bar">
               <button
                 type="button"
                 onClick={selectAllPending}
                 disabled={isBusy}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className="nb-btn-secondary text-xs"
               >
                 검토 대기 전체 선택 ({pendingReview.length})
               </button>
@@ -279,7 +279,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
                 type="button"
                 onClick={handleBulkApply}
                 disabled={isBusy || selectedIds.size === 0}
-                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent-600 disabled:opacity-50"
+                className="nb-btn-primary text-xs"
               >
                 선택 항목 슬라이드에 적용 ({selectedIds.size})
               </button>
@@ -287,7 +287,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
                 type="button"
                 onClick={handleBulkSkip}
                 disabled={isBusy || selectedIds.size === 0}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                className="nb-btn-secondary text-xs"
               >
                 선택 항목 적용 안 함
               </button>
@@ -295,11 +295,8 @@ export function SpellingStep({ project }: SpellingStepProps) {
           )}
 
           {groupedResults.map(([slideNum, slideResults]) => (
-            <div
-              key={slideNum}
-              className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
-            >
-              <div className="border-b border-gray-100 bg-gray-50 px-4 py-2">
+            <div key={slideNum} className="nb-card overflow-hidden">
+              <div className="nb-card-header">
                 <h4 className="text-sm font-semibold text-gray-800">
                   슬라이드 {slideNum}
                   <span className="ml-2 font-normal text-gray-500">
@@ -392,23 +389,23 @@ export function SpellingStep({ project }: SpellingStepProps) {
 
     if (checkInterrupted) {
       return (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 py-16 text-center">
-          <p className="text-sm font-medium text-amber-900">이전 맞춤법 검사가 중단되었습니다.</p>
-          <p className="mt-1 text-xs text-amber-800">다시 실행해 주세요.</p>
+        <div className="nb-alert nb-alert--warning text-center">
+          <p className="text-sm font-medium">이전 맞춤법 검사가 중단되었습니다.</p>
+          <p className="mt-1 text-xs">다시 실행해 주세요.</p>
         </div>
       )
     }
 
     if (checkPhase === 'error') {
       return (
-        <div className="rounded-xl border border-red-200 bg-red-50 py-16 text-center">
-          <p className="text-sm font-medium text-red-800">맞춤법 검사에 실패했습니다.</p>
+        <div className="nb-alert nb-alert--error text-center">
+          <p className="text-sm font-medium">맞춤법 검사에 실패했습니다.</p>
         </div>
       )
     }
 
     return (
-      <div className="rounded-xl border border-dashed border-gray-200 bg-white py-16 text-center">
+      <div className="nb-empty-state">
         <p className="text-sm text-gray-500">추출된 텍스트에 대해 AI 맞춤법 검사를 실행하세요.</p>
         <p className="mt-1 text-xs text-gray-400">
           검사 결과는 먼저 검토·선택한 뒤, 승인한 항목만 슬라이드에 반영됩니다.
@@ -419,10 +416,10 @@ export function SpellingStep({ project }: SpellingStepProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="nb-page-toolbar">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">Step 2. 맞춤법 검사</h3>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h3 className="nb-step-title">Step 2. 맞춤법 검사</h3>
+          <p className="nb-step-desc">
             추출 텍스트를 AI로 검사하고, 설계자가 선택한 수정안만 슬라이드에 반영합니다.
           </p>
         </div>
@@ -431,7 +428,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
             type="button"
             onClick={handleRunSpelling}
             disabled={isBusy || !accessible || eligibleSlides.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+            className="nb-btn-secondary"
           >
             {isRunning && <Spinner />}
             {isRunning ? '검사 중...' : checkCompleted ? '맞춤법 검사 다시 실행' : '맞춤법 검사 실행'}
@@ -440,7 +437,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
             type="button"
             onClick={handleComplete}
             disabled={isBusy || !canCompleteReview}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-600 disabled:opacity-50"
+            className="nb-btn-primary"
           >
             {completeReview.isPending && <Spinner className="text-white" />}
             {completeReview.isPending ? '처리 중...' : '검토 완료 → 번역'}
@@ -471,7 +468,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
       </ol>
 
       {!accessible && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="nb-alert nb-alert--warning">
           {stepPrerequisiteMessage(2)}
         </div>
       )}
@@ -491,7 +488,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
       )}
 
       {checkCompleted && pendingReview.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="nb-alert nb-alert--warning">
           검토 대기 {pendingReview.length}건 — 체크 후 「슬라이드에 적용」 또는 「적용 안 함」을 선택하세요.
         </div>
       )}
