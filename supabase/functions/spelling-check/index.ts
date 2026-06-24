@@ -10,8 +10,8 @@ import { handleCors } from '../_shared/cors.ts'
 import { HttpError, chunk, errorResponse, jsonResponse, parseJsonBody } from '../_shared/http.ts'
 import { buildSpellingFields, type SlideRow } from '../_shared/slides.ts'
 
-/** 슬라이드 N개당 Claude API 1회 — useSpelling.SPELLING_BATCH_SIZE와 동일하게 유지 */
-const BATCH_SIZE = 15
+/** 슬라이드 N개당 Claude API 1회 */
+const BATCH_SIZE = 10
 const SPELLING_MAX_TOKENS = 8192
 
 interface SpellingCheckRequest {
