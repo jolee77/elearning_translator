@@ -69,6 +69,21 @@ export function ExpertReviewPage() {
   const isReviewDone = data?.review.status === 'done'
   const langName = data ? getLangConfig(data.project.target_lang).name : ''
 
+  const handleRevertItem = async (item: ExpertReviewItem) => {
+    if (!token) return
+
+    try {
+      await saveItem.mutateAsync({
+        token,
+        itemId: item.id,
+        status: 'pending',
+      })
+      showToast('다시 수정할 수 있습니다.', 'info')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '되돌리기에 실패했습니다.', 'error')
+    }
+  }
+
   const handleSaveItem = async (item: ExpertReviewItem) => {
     if (!token) return
 
@@ -100,6 +115,9 @@ export function ExpertReviewPage() {
       showToast(err instanceof Error ? err.message : '완료 처리에 실패했습니다.', 'error')
     }
   }
+
+  const selectedReviewed =
+    selectedItem != null && isItemReviewed(selectedItem) && !isReviewDone
 
   const isBusy = saveItem.isPending || completeReview.isPending
 
@@ -256,7 +274,7 @@ export function ExpertReviewPage() {
                           [selectedItem.id]: e.target.value,
                         }))
                       }
-                      disabled={isReviewDone || isBusy}
+                      disabled={isReviewDone || isBusy || selectedReviewed}
                       className="nb-textarea mt-1"
                     />
                   </div>
@@ -271,7 +289,7 @@ export function ExpertReviewPage() {
                           [selectedItem.id]: e.target.value,
                         }))
                       }
-                      disabled={isReviewDone || isBusy}
+                      disabled={isReviewDone || isBusy || selectedReviewed}
                       minRows={2}
                       placeholder="검토 의견을 입력하세요 (선택)"
                       className="nb-textarea mt-1"
@@ -279,15 +297,29 @@ export function ExpertReviewPage() {
                   </div>
 
                   {!isReviewDone && (
-                    <button
-                      type="button"
-                      onClick={() => handleSaveItem(selectedItem)}
-                      disabled={isBusy || isItemReviewed(selectedItem)}
-                      className="nb-btn-primary"
-                    >
-                      {saveItem.isPending && <Spinner className="text-white" />}
-                      {saveItem.isPending ? '저장 중...' : '완료'}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {selectedReviewed ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRevertItem(selectedItem)}
+                          disabled={isBusy}
+                          className="nb-btn-secondary"
+                        >
+                          {saveItem.isPending && <Spinner />}
+                          {saveItem.isPending ? '처리 중...' : '다시 수정'}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSaveItem(selectedItem)}
+                          disabled={isBusy}
+                          className="nb-btn-primary"
+                        >
+                          {saveItem.isPending && <Spinner className="text-white" />}
+                          {saveItem.isPending ? '저장 중...' : '완료'}
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

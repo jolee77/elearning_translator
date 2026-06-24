@@ -254,7 +254,7 @@ const KO_CPM = 320
 
 | 우선순위 | 항목 | 설명 |
 |---------|------|------|
-| — | **전문가 검토 되돌리기** | 전문가가 항목을 검토 완료(`reviewed`) 처리한 뒤에도, 다시 수정할 수 있도록 **되돌리기(재편집)** 기능 제공. 완료된 항목을 `pending`으로 되돌리거나 편집 가능 상태로 전환. (`ExpertReviewPage`, `save_expert_review_item` RPC 확장) |
+| — | ~~**전문가 검토 되돌리기**~~ | 완료 — 검토 완료 항목에「다시 수정」버튼으로 `pending` 복원 |
 | — | nextBMS 디자인 전역 적용 | 로그인·대시보드 등 나머지 페이지 `nb-*` 통일 |
 | — | 미사용 Step 컴포넌트 정리 | ~~`VerificationStep.tsx`, `TranslationStep.tsx`~~ 완료 |
 
