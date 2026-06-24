@@ -38,7 +38,7 @@ BEGIN
     RAISE EXCEPTION 'No translations';
   END IF;
 
-  v_token := encode(gen_random_bytes(32), 'hex');
+  v_token := encode(extensions.gen_random_bytes(32), 'hex');
 
   INSERT INTO expert_reviews (
     project_id,
