@@ -28,6 +28,12 @@ export function LoginPage() {
       return
     }
 
+    if (!result.session) {
+      showToast('로그인 세션을 확인하지 못했습니다. 다시 시도해 주세요.', 'error')
+      setSubmitting(false)
+      return
+    }
+
     navigate('/dashboard', { replace: true })
     setSubmitting(false)
   }

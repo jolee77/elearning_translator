@@ -1,10 +1,36 @@
+import { useEffect, useState } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 
 export function ProtectedRoute() {
-  const { user, loading } = useAuth()
+  const { user, session, loading } = useAuth()
+  const [sessionChecked, setSessionChecked] = useState(false)
+  const [storedSession, setStoredSession] = useState(false)
 
-  if (loading) {
+  useEffect(() => {
+    let active = true
+
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      if (!active) return
+      setStoredSession(!!currentSession)
+      setSessionChecked(true)
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setStoredSession(!!nextSession)
+      setSessionChecked(true)
+    })
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  if (loading || !sessionChecked) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-sm text-gray-500">로딩 중...</div>
@@ -12,7 +38,9 @@ export function ProtectedRoute() {
     )
   }
 
-  if (!user) {
+  const isAuthenticated = !!(user ?? session ?? storedSession)
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />
   }
 

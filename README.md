@@ -15,7 +15,10 @@
 # 의존성 설치
 npm install
 
-# 환경 변수 설정 (.env)
+# 환경 변수 설정
+cp .env.example .env
+# .env에 Supabase URL·anon key 입력 후 dev 서버 재시작 (이미 띄운 경우 Ctrl+C 후 npm run dev)
+
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_anon_key
 

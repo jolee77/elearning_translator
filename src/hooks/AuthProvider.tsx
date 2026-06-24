@@ -56,7 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(nextSession?.user ?? null)
 
       if (nextSession?.user) {
-        loadProfile(nextSession.user.id)
+        // Supabase: onAuthStateChange 콜백에서 await 사용 시 데드락 가능
+        window.setTimeout(() => {
+          void loadProfile(nextSession.user!.id)
+        }, 0)
       } else {
         setProfile(null)
       }
@@ -70,16 +73,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
       if (error) {
-        return { error: formatAuthError(error.message) }
+        return { error: formatAuthError(error.message), session: null }
       }
 
       if (data.session) {
         setSession(data.session)
         setUser(data.session.user)
         await loadProfile(data.session.user.id)
+        return { error: null, session: data.session }
       }
 
-      return { error: null }
+      const { data: sessionData } = await supabase.auth.getSession()
+      if (sessionData.session) {
+        setSession(sessionData.session)
+        setUser(sessionData.session.user)
+        await loadProfile(sessionData.session.user.id)
+        return { error: null, session: sessionData.session }
+      }
+
+      return {
+        error: '로그인 세션을 저장하지 못했습니다. 브라우저 저장소(쿠키/로컬 스토리지)를 확인해 주세요.',
+        session: null,
+      }
     },
     [loadProfile],
   )

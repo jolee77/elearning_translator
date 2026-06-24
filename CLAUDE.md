@@ -17,6 +17,13 @@ VITE_SUPABASE_URL=https://jprclgxtaxksocxeqoze.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwcmNsZ3h0YXhrc29jeGVxb3plIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxODYwMzIsImV4cCI6MjA5Nzc2MjAzMn0.bYn3QQ82sNF4MXmnU0gSLrcBWMPEK3bA1B7HVAu7n_Y
 ```
 
+## 로컬 개발 시 로그인
+
+- Vercel과 **localhost는 세션(localStorage)이 공유되지 않습니다.** 로컬에서도 별도로 로그인해야 합니다.
+- `.env`는 `elearning-translator` 폴더에 두고, **수정 후 dev 서버를 재시작**하세요.
+- 비밀번호 오류 시 토스트: 「이메일 또는 비밀번호가 올바르지 않습니다」
+- 로그인 성공 직후 대시보드로 튕기면 브라우저 시크릿 모드/저장소 차단 여부를 확인하세요.
+
 ## DB 테이블 구조
 
 > 컬럼명은 `src/types/index.ts` 및 Supabase 실제 스키마와 동일해야 함.  
