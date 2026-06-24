@@ -3,6 +3,22 @@ export interface TextDiffSegment {
   changed: boolean
 }
 
+export type SpellingChangeKind = 'none' | 'spacing' | 'text'
+
+export interface SuggestionRenderPart {
+  text: string
+  kind: 'unchanged' | 'space-insert' | 'changed'
+}
+
+export function detectSpellingChangeKind(
+  original: string,
+  suggestion: string,
+): SpellingChangeKind {
+  if (original === suggestion) return 'none'
+  if (original.replace(/\s/g, '') === suggestion.replace(/\s/g, '')) return 'spacing'
+  return 'text'
+}
+
 /** AI 수정안에서 원문과 다른 구간만 changed=true로 반환 */
 export function diffSuggestionSegments(
   original: string,
@@ -59,4 +75,90 @@ export function diffSuggestionSegments(
   }
 
   return segments
+}
+
+function isWhitespace(char: string): boolean {
+  return /\s/.test(char)
+}
+
+function spaceMarker(char: string): string {
+  if (char === '\n') return '↵'
+  if (char === '\t') return '⇥'
+  return '^'
+}
+
+function buildSpacingSuggestionParts(
+  original: string,
+  suggestion: string,
+): SuggestionRenderPart[] {
+  const parts: SuggestionRenderPart[] = []
+  let buffer = ''
+  let i = 0
+  let j = 0
+
+  const flush = (kind: 'unchanged' | 'changed') => {
+    if (!buffer) return
+    parts.push({ text: buffer, kind })
+    buffer = ''
+  }
+
+  while (j < suggestion.length) {
+    const suggestionChar = suggestion[j]
+    const originalChar = i < original.length ? original[i] : null
+
+    if (originalChar === suggestionChar) {
+      buffer += suggestionChar
+      i += 1
+      j += 1
+      continue
+    }
+
+    if (isWhitespace(suggestionChar)) {
+      flush('unchanged')
+      parts.push({ text: spaceMarker(suggestionChar), kind: 'space-insert' })
+      j += 1
+      continue
+    }
+
+    if (originalChar != null && isWhitespace(originalChar)) {
+      i += 1
+      continue
+    }
+
+    flush('unchanged')
+    buffer += suggestionChar
+    j += 1
+  }
+
+  flush('unchanged')
+  return parts
+}
+
+export function buildSuggestionRenderParts(
+  original: string,
+  suggestion: string,
+): { changeKind: SpellingChangeKind; parts: SuggestionRenderPart[] } {
+  const changeKind = detectSpellingChangeKind(original, suggestion)
+
+  if (changeKind === 'none') {
+    return {
+      changeKind,
+      parts: suggestion ? [{ text: suggestion, kind: 'unchanged' }] : [],
+    }
+  }
+
+  if (changeKind === 'spacing') {
+    return {
+      changeKind,
+      parts: buildSpacingSuggestionParts(original, suggestion),
+    }
+  }
+
+  return {
+    changeKind,
+    parts: diffSuggestionSegments(original, suggestion).map((segment) => ({
+      text: segment.text,
+      kind: segment.changed ? 'changed' : 'unchanged',
+    })),
+  }
 }

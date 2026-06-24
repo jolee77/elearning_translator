@@ -1,35 +1,52 @@
-import { diffSuggestionSegments } from '../../lib/textDiff'
+import { buildSuggestionRenderParts } from '../../lib/textDiff'
 
 interface SuggestionHighlightProps {
   original: string
   suggestion: string
-  highlightChanges?: boolean
 }
 
 export function SuggestionHighlight({
   original,
   suggestion,
-  highlightChanges = true,
 }: SuggestionHighlightProps) {
-  if (!highlightChanges || original.trim() === suggestion.trim()) {
-    return <span className="text-gray-800">{suggestion}</span>
-  }
-
-  const segments = diffSuggestionSegments(original, suggestion)
+  const { changeKind, parts } = buildSuggestionRenderParts(original, suggestion)
 
   return (
-    <>
-      {segments.map((segment, index) =>
-        segment.changed ? (
-          <span key={index} className="font-medium text-red-600">
-            {segment.text}
-          </span>
-        ) : (
-          <span key={index} className="text-gray-800">
-            {segment.text}
-          </span>
-        ),
+    <div className="space-y-1">
+      {changeKind === 'spacing' && (
+        <span className="inline-flex rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+          띄어쓰기 오류
+        </span>
       )}
-    </>
+      <p className="whitespace-pre-wrap text-sm">
+        {parts.map((part, index) => {
+          if (part.kind === 'space-insert') {
+            return (
+              <span
+                key={index}
+                className="mx-0.5 inline-block font-semibold text-red-600"
+                title="띄어쓰기 추가"
+              >
+                {part.text}
+              </span>
+            )
+          }
+
+          if (part.kind === 'changed') {
+            return (
+              <span key={index} className="font-medium text-red-600">
+                {part.text}
+              </span>
+            )
+          }
+
+          return (
+            <span key={index} className="text-gray-800">
+              {part.text}
+            </span>
+          )
+        })}
+      </p>
+    </div>
   )
 }

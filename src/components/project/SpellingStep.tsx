@@ -341,23 +341,24 @@ export function SpellingStep({ project }: SpellingStepProps) {
                           <span className="text-xs text-gray-500">수정 불필요</span>
                         )}
                       </div>
-                      <div className="grid gap-3 md:grid-cols-2">
+                      <div className={hasChange ? 'grid gap-3 md:grid-cols-2' : ''}>
                         <div>
                           <p className="text-xs font-medium text-gray-500">원문 (추출 텍스트)</p>
                           <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
                             {result.original}
                           </p>
                         </div>
-                        <div>
-                          <p className="text-xs font-medium text-gray-500">AI 수정안</p>
-                          <p className="mt-1 whitespace-pre-wrap text-sm">
-                            <SuggestionHighlight
-                              original={result.original}
-                              suggestion={result.suggestion}
-                              highlightChanges={hasChange}
-                            />
-                          </p>
-                        </div>
+                        {hasChange && (
+                          <div>
+                            <p className="text-xs font-medium text-gray-500">AI 수정안</p>
+                            <div className="mt-1">
+                              <SuggestionHighlight
+                                original={result.original}
+                                suggestion={result.suggestion}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                       {pending && (
                         <div className="mt-2 flex flex-wrap gap-2">

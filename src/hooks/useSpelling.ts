@@ -161,13 +161,15 @@ async function applySpellingResultToSlide(
   if (resultError) throw resultError
 
   if (userId) {
-    await supabase.from('change_logs').insert({
+    const { error: logError } = await supabase.from('change_logs').insert({
       project_id: projectId,
       user_id: userId,
       action: 'spelling_applied',
       detail: `슬라이드 ${slide.slide_num} ${result.field} 수정 적용`,
       metadata: { stage: 'spelling', spelling_result_id: result.id },
     })
+
+    if (logError) throw logError
   }
 }
 
