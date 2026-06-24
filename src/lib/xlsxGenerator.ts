@@ -17,12 +17,11 @@ export function downloadExtractionXlsx(slides: Slide[], filename: string): void 
   const rows = slides.map((slide) => ({
     슬라이드번호: slide.slide_num,
     유형: SLIDE_TYPE_LABELS[slide.slide_type],
-    섹션: slide.screen_num ?? '',
+    화면번호: slide.screen_num ?? '',
     화면텍스트: formatScreenText(slide.screen_text),
     나레이션: slide.narration ?? '',
     과정명: slide.course_name ?? '',
     회차명: slide.chapter_name ?? '',
-    목차: slide.current_section ?? '',
     화면설명: slide.screen_desc ?? '',
     이미지번호: slide.image_nums ?? '',
   }))

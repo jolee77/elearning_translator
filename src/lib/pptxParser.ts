@@ -343,28 +343,6 @@ function classifySlideType(shapes: RawShape[], slideNum: number): SlideType {
   return 'content'
 }
 
-function pickCurrentSection(shapes: RawShape[]): string | null {
-  const sidebarTexts = shapes
-    .filter(
-      (s) =>
-        s.x / SB_CX < 0.30 &&
-        s.y / SB_CY >= 0.08 &&
-        s.y / SB_CY < 0.78 &&
-        !isSyncMarkerOnly(s.text),
-    )
-    .map((s) => s.text.split('\n')[0]?.trim() ?? '')
-    .filter((t) => t && !MENU_SECTION_LABELS.has(t))
-
-  if (sidebarTexts.length === 0) return null
-
-  const picked =
-    sidebarTexts.find((t) => t.startsWith('▶')) ??
-    sidebarTexts.find((t) => !/^#\d/.test(t)) ??
-    sidebarTexts[0]
-
-  return picked.replace(/^▶\s*/, '').trim() || null
-}
-
 /** 나레이션·화면 싱크용 마커 (#1, #2 …) — 화면 텍스트 추출 시 제외 */
 export function isSyncMarkerOnly(text: string): boolean {
   return /^#\d+\s*$/.test(text.trim())
@@ -511,7 +489,7 @@ function parseSlideXml(xml: string, slideNum: number): ParsedSlide | null {
     screen_num: screenNum,
     course_name: courseName,
     chapter_name: chapterName,
-    current_section: pickCurrentSection(shapes),
+    current_section: null,
     screen_text: screenBoxes.length > 0 ? screenBoxes : null,
     screen_desc: screenDesc,
     image_nums: imageNums,

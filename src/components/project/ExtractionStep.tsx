@@ -314,7 +314,7 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
                 <tr>
                   <th>슬라이드번호</th>
                   <th>유형</th>
-                  <th>섹션</th>
+                  <th>화면번호</th>
                   <th className="min-w-[240px]">화면텍스트</th>
                   <th className="min-w-[240px]">나레이션</th>
                 </tr>

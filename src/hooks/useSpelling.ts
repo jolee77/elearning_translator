@@ -7,7 +7,8 @@ import type { Slide, SpellingResult } from '../types'
 import { useAuth } from './useAuth'
 
 const spellingQueryKey = ['spelling_results'] as const
-const SPELLING_BATCH_SIZE = 5
+/** Edge Function spelling-check BATCH_SIZE와 동일하게 유지 */
+const SPELLING_BATCH_SIZE = 15
 
 export interface SpellingCheckSummary {
   resultCount: number

@@ -1,6 +1,8 @@
 import { HttpError, extractJsonFromText } from './http.ts'
 
 export const CLAUDE_MODEL = 'claude-sonnet-4-6'
+/** 맞춤법 검사 등 단순 교정 작업용 (속도 우선) */
+export const CLAUDE_SPELLING_MODEL = 'claude-haiku-4-5'
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages'
 
 interface ClaudeResponse {
@@ -12,6 +14,7 @@ export async function callClaude(
   systemPrompt: string,
   userPrompt: string,
   maxTokens = 8192,
+  model = CLAUDE_MODEL,
 ): Promise<string> {
   const response = await fetch(CLAUDE_API_URL, {
     method: 'POST',
@@ -21,7 +24,7 @@ export async function callClaude(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: CLAUDE_MODEL,
+      model,
       max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
@@ -48,7 +51,8 @@ export async function callClaudeJson<T>(
   systemPrompt: string,
   userPrompt: string,
   maxTokens = 8192,
+  model = CLAUDE_MODEL,
 ): Promise<T> {
-  const text = await callClaude(apiKey, systemPrompt, userPrompt, maxTokens)
+  const text = await callClaude(apiKey, systemPrompt, userPrompt, maxTokens, model)
   return extractJsonFromText(text) as T
 }

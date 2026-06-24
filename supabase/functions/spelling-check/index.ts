@@ -5,12 +5,14 @@ import {
   updateProjectStatus,
   verifyProjectAccess,
 } from '../_shared/auth.ts'
-import { callClaudeJson } from '../_shared/claude.ts'
+import { callClaudeJson, CLAUDE_SPELLING_MODEL } from '../_shared/claude.ts'
 import { handleCors } from '../_shared/cors.ts'
 import { HttpError, chunk, errorResponse, jsonResponse, parseJsonBody } from '../_shared/http.ts'
 import { buildSpellingFields, type SlideRow } from '../_shared/slides.ts'
 
-const BATCH_SIZE = 5
+/** 슬라이드 N개당 Claude API 1회 — useSpelling.SPELLING_BATCH_SIZE와 동일하게 유지 */
+const BATCH_SIZE = 15
+const SPELLING_MAX_TOKENS = 4096
 
 interface SpellingCheckRequest {
   project_id: string
@@ -216,6 +218,8 @@ serve(async (req) => {
         apiKey,
         SYSTEM_PROMPT,
         buildSpellingPrompt(batch),
+        SPELLING_MAX_TOKENS,
+        CLAUDE_SPELLING_MODEL,
       )
 
       rowsToInsert.push(...mergeSpellingRows(body.project_id, batch, response))
