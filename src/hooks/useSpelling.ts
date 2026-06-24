@@ -6,7 +6,6 @@ import type { Slide, SpellingResult } from '../types'
 import { useAuth } from './useAuth'
 
 const spellingQueryKey = ['spelling_results'] as const
-const SPELLING_BATCH_SIZE = 5
 
 export function useSpellingResults(projectId: string | undefined) {
   return useQuery({
@@ -42,18 +41,24 @@ export function useRunSpellingCheck() {
         throw new Error('검사할 슬라이드가 없습니다.')
       }
 
-      await supabase.from('projects').update({ status: 'spelling' }).eq('id', projectId)
+      const { error: statusError } = await supabase
+        .from('projects')
+        .update({ status: 'spelling' })
+        .eq('id', projectId)
 
-      const batches: string[][] = []
-      for (let i = 0; i < slideIds.length; i += SPELLING_BATCH_SIZE) {
-        batches.push(slideIds.slice(i, i + SPELLING_BATCH_SIZE))
+      if (statusError) throw statusError
+
+      onProgress?.(5)
+
+      const result = await spellingCheck(projectId, slideIds)
+
+      if (!result.result_count) {
+        throw new Error(
+          '맞춤법 검사 결과가 저장되지 않았습니다. 추출된 화면 텍스트·나레이션이 있는지 확인해 주세요.',
+        )
       }
 
-      for (let i = 0; i < batches.length; i++) {
-        await spellingCheck(projectId, batches[i])
-        const percent = Math.round(((i + 1) / batches.length) * 100)
-        onProgress?.(percent)
-      }
+      onProgress?.(100)
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })

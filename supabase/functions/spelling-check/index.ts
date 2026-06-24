@@ -40,6 +40,73 @@ interface SpellingBatchResponse {
   results: SpellingSlideResult[]
 }
 
+type SpellingInsertRow = {
+  project_id: string
+  slide_id: string
+  field: string
+  original: string
+  suggestion: string
+  applied: boolean
+}
+
+function findFieldResult(
+  fields: SpellingFieldResult[] | undefined,
+  fieldKey: string,
+): SpellingFieldResult | undefined {
+  if (!fields?.length) return undefined
+
+  const exact = fields.find((field) => field.field_key === fieldKey)
+  if (exact) return exact
+
+  if (fieldKey === 'narration') {
+    return fields.find((field) => field.field_key === 'narration')
+  }
+
+  if (fieldKey.startsWith('screen_text_')) {
+    return fields.find((field) => field.field_key === fieldKey)
+  }
+
+  if (fieldKey === 'screen_text') {
+    return fields.find((field) => field.field_key === 'screen_text')
+      ?? fields.find((field) => field.field_key.startsWith('screen_text_'))
+  }
+
+  return undefined
+}
+
+function mergeSpellingRows(
+  projectId: string,
+  batch: SlideRow[],
+  response: SpellingBatchResponse,
+): SpellingInsertRow[] {
+  const rows: SpellingInsertRow[] = []
+
+  for (const slide of batch) {
+    const slideResult = response.results?.find((item) => item.slide_id === slide.id)
+      ?? response.results?.find((item) => {
+        const slideNum = (item as SpellingSlideResult & { slide_num?: number }).slide_num
+        return slideNum != null && slideNum === slide.slide_num
+      })
+
+    const expectedFields = buildSpellingFields(slide)
+    for (const expected of expectedFields) {
+      const fieldResult = findFieldResult(slideResult?.fields, expected.field_key)
+      const suggestion = fieldResult?.corrected_text?.trim() || expected.text
+
+      rows.push({
+        project_id: projectId,
+        slide_id: slide.id,
+        field: expected.field_key,
+        original: expected.text,
+        suggestion,
+        applied: false,
+      })
+    }
+  }
+
+  return rows
+}
+
 const SYSTEM_PROMPT = `당신은 한국어 이러닝 콘텐츠 전문 교정자입니다.
 스토리보드 PPTX에서 추출한 화면 텍스트와 나레이션의 맞춤법, 띄어쓰기, 문법, 표기 일관성을 검토합니다.
 
@@ -125,14 +192,18 @@ serve(async (req) => {
     }
 
     const slideRows = slides as SlideRow[]
-    const rowsToInsert: Array<{
-      project_id: string
-      slide_id: string
-      field: string
-      original: string
-      suggestion: string
-      applied: boolean
-    }> = []
+    const rowsToInsert: SpellingInsertRow[] = []
+    const totalFieldCount = slideRows.reduce(
+      (count, slide) => count + buildSpellingFields(slide).length,
+      0,
+    )
+
+    if (totalFieldCount === 0) {
+      throw new HttpError(
+        400,
+        '검사할 텍스트가 없습니다. 추출 확인 단계에서 화면 텍스트 또는 나레이션이 저장되었는지 확인해 주세요.',
+      )
+    }
 
     for (const batch of chunk(slideRows, BATCH_SIZE)) {
       const response = await callClaudeJson<SpellingBatchResponse>(
@@ -141,21 +212,7 @@ serve(async (req) => {
         buildSpellingPrompt(batch),
       )
 
-      for (const slideResult of response.results ?? []) {
-        const slide = batch.find((item) => item.id === slideResult.slide_id)
-        if (!slide) continue
-
-        for (const field of slideResult.fields ?? []) {
-          rowsToInsert.push({
-            project_id: body.project_id,
-            slide_id: slide.id,
-            field: field.field_key,
-            original: field.original_text,
-            suggestion: field.corrected_text,
-            applied: false,
-          })
-        }
-      }
+      rowsToInsert.push(...mergeSpellingRows(body.project_id, batch, response))
     }
 
     const { error: deleteError } = await serviceClient

@@ -34,8 +34,18 @@ async function invokeFunction<T>(name: string, body: unknown): Promise<T> {
   return data as T
 }
 
+export interface SpellingCheckResponse {
+  success: boolean
+  project_id: string
+  processed_slides: number
+  result_count: number
+}
+
 export function spellingCheck(projectId: string, slideIds: string[]) {
-  return invokeFunction('spelling-check', { project_id: projectId, slide_ids: slideIds })
+  return invokeFunction<SpellingCheckResponse>('spelling-check', {
+    project_id: projectId,
+    slide_ids: slideIds,
+  })
 }
 
 export function translateSlides(

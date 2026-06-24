@@ -44,7 +44,18 @@ export function normalizeScreenText(
 export function formatScreenText(screenText: SlideTextBox[] | string | null): string {
   const normalized = normalizeScreenText(screenText)
   if (!normalized?.length) return ''
-  return normalized.map((box) => box.text).join('\n')
+  return normalized
+    .map((box, index) => boxText(box, index))
+    .filter(Boolean)
+    .join('\n')
+}
+
+function boxText(box: SlideTextBox | Record<string, unknown>, index: number): string {
+  if (typeof box === 'object' && box) {
+    const raw = 'text' in box ? box.text : 'content' in box ? box.content : ''
+    return String(raw ?? '').trim()
+  }
+  return String(box ?? '').trim()
 }
 
 export function buildSpellingFields(slide: SlideRow): Array<{
@@ -56,13 +67,19 @@ export function buildSpellingFields(slide: SlideRow): Array<{
 
   if (screenText?.length) {
     screenText.forEach((box, index) => {
-      if (box.text.trim()) {
+      const text = boxText(box, index)
+      if (text) {
         fields.push({
           field_key: `screen_text_${box.id || index}`,
-          text: box.text.trim(),
+          text,
         })
       }
     })
+  } else {
+    const combined = formatScreenText(slide.screen_text)
+    if (combined.trim()) {
+      fields.push({ field_key: 'screen_text', text: combined.trim() })
+    }
   }
 
   if (slide.narration?.trim()) {

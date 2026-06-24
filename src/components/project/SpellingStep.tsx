@@ -143,7 +143,12 @@ export function SpellingStep({ project }: SpellingStepProps) {
       {isRunning && (
         <ProgressBar
           progress={progress}
-          label={`맞춤법 검사 진행 중... (${progress}%)`}
+          indeterminate={progress < 100}
+          label={
+            progress < 100
+              ? '맞춤법 검사 진행 중... AI가 텍스트를 분석하고 있습니다.'
+              : `맞춤법 검사 완료 (${progress}%)`
+          }
         />
       )}
 
