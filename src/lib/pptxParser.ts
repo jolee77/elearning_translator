@@ -89,14 +89,20 @@ function extractFontSize(txBody: Element): number | undefined {
   return val ? parseInt(val, 10) / 100 : undefined
 }
 
-function getShapeTransform(shape: Element): { x: number; y: number; w: number; h: number } {
-  const xfrm =
+function getShapeXfrm(shape: Element): Element | null {
+  return (
     firstChildByLocalName(shape, 'xfrm') ??
     (() => {
       const spPr = firstChildByLocalName(shape, 'spPr')
-      return spPr ? firstChildByLocalName(spPr, 'xfrm') : null
+      if (spPr) return firstChildByLocalName(spPr, 'xfrm')
+      const grpSpPr = firstChildByLocalName(shape, 'grpSpPr')
+      return grpSpPr ? firstChildByLocalName(grpSpPr, 'xfrm') : null
     })()
+  )
+}
 
+function getShapeTransform(shape: Element): { x: number; y: number; w: number; h: number } {
+  const xfrm = getShapeXfrm(shape)
   const off = xfrm ? firstChildByLocalName(xfrm, 'off') : null
   const ext = xfrm ? firstChildByLocalName(xfrm, 'ext') : null
 
@@ -108,50 +114,107 @@ function getShapeTransform(shape: Element): { x: number; y: number; w: number; h
   }
 }
 
-/** grpSp offset 반영하여 spTree 하위 텍스트 도형 수집 */
-function collectRawShapes(parent: Element, offsetX = 0, offsetY = 0): RawShape[] {
+/** grpSp 자식 좌표계 → 슬라이드 EMU 변환 컨텍스트 */
+interface CoordCtx {
+  originX: number
+  originY: number
+  scaleX: number
+  scaleY: number
+}
+
+const ROOT_CTX: CoordCtx = { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }
+
+function groupChildCtx(grp: Element, parent: CoordCtx): CoordCtx {
+  const { x, y, w, h } = getShapeTransform(grp)
+  const xfrm = getShapeXfrm(grp)
+  const chOff = xfrm ? firstChildByLocalName(xfrm, 'chOff') : null
+  const chExt = xfrm ? firstChildByLocalName(xfrm, 'chExt') : null
+  const chOffX = attrInt(chOff, 'x')
+  const chOffY = attrInt(chOff, 'y')
+  const chExtW = attrInt(chExt, 'cx') || w || 1
+  const chExtH = attrInt(chExt, 'cy') || h || 1
+  const gScaleX = w / chExtW
+  const gScaleY = h / chExtH
+
+  return {
+    originX: parent.originX + parent.scaleX * (x - chOffX * gScaleX),
+    originY: parent.originY + parent.scaleY * (y - chOffY * gScaleY),
+    scaleX: parent.scaleX * gScaleX,
+    scaleY: parent.scaleY * gScaleY,
+  }
+}
+
+function toSlideCoords(
+  localX: number,
+  localY: number,
+  localW: number,
+  localH: number,
+  ctx: CoordCtx,
+): { x: number; y: number; w: number; h: number } {
+  return {
+    x: ctx.originX + ctx.scaleX * localX,
+    y: ctx.originY + ctx.scaleY * localY,
+    w: localW * ctx.scaleX,
+    h: localH * ctx.scaleY,
+  }
+}
+
+function pushTextShape(
+  shapes: RawShape[],
+  shape: Element,
+  ctx: CoordCtx,
+): void {
+  const txBody = firstChildByLocalName(shape, 'txBody')
+  if (!txBody) return
+
+  const text = extractBodyText(txBody)
+  if (!text) return
+
+  const local = getShapeTransform(shape)
+  const abs = toSlideCoords(local.x, local.y, local.w, local.h, ctx)
+  shapes.push({
+    text,
+    ...abs,
+    fontSize: extractFontSize(txBody),
+  })
+}
+
+/** grpSp chOff/chExt·중첩 그룹 변환 반영하여 spTree 하위 텍스트 도형 수집 */
+function collectRawShapes(parent: Element, ctx: CoordCtx = ROOT_CTX): RawShape[] {
   const shapes: RawShape[] = []
 
-  for (const child of Array.from(parent.children)) {
-    if (!(child instanceof Element)) continue
+  const walk = (node: Element, currentCtx: CoordCtx) => {
+    for (const child of Array.from(node.children)) {
+      if (!(child instanceof Element)) continue
 
-    if (child.localName === 'sp') {
-      const txBody = firstChildByLocalName(child, 'txBody')
-      if (!txBody) continue
+      if (child.localName === 'sp' || child.localName === 'cxnSp') {
+        pushTextShape(shapes, child, currentCtx)
+      } else if (child.localName === 'grpSp') {
+        walk(child, groupChildCtx(child, currentCtx))
+      } else if (child.localName === 'graphicFrame') {
+        const table = firstChildByLocalName(child, 'tbl')
+        if (!table) {
+          walk(child, currentCtx)
+          continue
+        }
 
-      const text = extractBodyText(txBody)
-      if (!text) continue
+        const local = getShapeTransform(child)
+        const abs = toSlideCoords(local.x, local.y, local.w, local.h, currentCtx)
 
-      const { x, y, w, h } = getShapeTransform(child)
-      shapes.push({
-        text,
-        x: x + offsetX,
-        y: y + offsetY,
-        w,
-        h,
-        fontSize: extractFontSize(txBody),
-      })
-    } else if (child.localName === 'grpSp') {
-      const { x, y } = getShapeTransform(child)
-      shapes.push(...collectRawShapes(child, offsetX + x, offsetY + y))
-    } else if (child.localName === 'graphicFrame') {
-      const table = firstChildByLocalName(child, 'tbl')
-      if (!table) continue
-
-      const { x, y, w, h } = getShapeTransform(child)
-      const absX = x + offsetX
-      const absY = y + offsetY
-
-      for (const tc of elementsByLocalName(table, 'tc')) {
-        const txBody = firstChildByLocalName(tc, 'txBody')
-        if (!txBody) continue
-        const text = extractBodyText(txBody)
-        if (!text) continue
-        shapes.push({ text, x: absX, y: absY, w, h })
+        for (const tc of elementsByLocalName(table, 'tc')) {
+          const txBody = firstChildByLocalName(tc, 'txBody')
+          if (!txBody) continue
+          const text = extractBodyText(txBody)
+          if (!text) continue
+          shapes.push({ text, ...abs })
+        }
+      } else {
+        walk(child, currentCtx)
       }
     }
   }
 
+  walk(parent, ctx)
   return shapes
 }
 
@@ -178,13 +241,23 @@ function isMenu(x: number, y: number, w: number, h: number): boolean {
   return xRight <= 0.25 && y / SB_CY >= 0.08 && yBottom <= 0.78
 }
 
-/** 중앙 화면 영역과 겹치는 박스 (왼쪽 상단 좌표만 보지 않음) */
+/** 중앙 화면 영역과 겹치는 박스 (크기 0이면 중심점으로 판별) */
 function overlapsScreenContent(x: number, y: number, w: number, h: number): boolean {
+  if (w <= 0 && h <= 0) {
+    const cx = x / SB_CX
+    const cy = y / SB_CY
+    return cx > 0.13 && cx < 0.75 && cy > 0.08 && cy < 0.78
+  }
+
   const xR = x / SB_CX
-  const xRight = (x + w) / SB_CX
+  const xRight = (x + Math.max(w, 0)) / SB_CX
   const yR = y / SB_CY
-  const yBottom = (y + h) / SB_CY
-  return xRight > 0.13 && xR < 0.75 && yBottom > 0.08 && yR < 0.78
+  const yBottom = (y + Math.max(h, 0)) / SB_CY
+  if (xRight > 0.13 && xR < 0.75 && yBottom > 0.08 && yR < 0.78) return true
+
+  const cx = (x + w / 2) / SB_CX
+  const cy = (y + h / 2) / SB_CY
+  return cx > 0.13 && cx < 0.75 && cy > 0.08 && cy < 0.78
 }
 
 function isScreen(x: number, y: number, w: number, h: number): boolean {
@@ -270,14 +343,24 @@ function classifySlideType(shapes: RawShape[], slideNum: number): SlideType {
   return 'content'
 }
 
-function pickCurrentSection(menuShapes: RawShape[]): string | null {
-  const menuTexts = menuShapes.map((s) => s.text.split('\n')[0]?.trim() ?? '').filter(Boolean)
-  if (menuTexts.length === 0) return null
+function pickCurrentSection(shapes: RawShape[]): string | null {
+  const sidebarTexts = shapes
+    .filter(
+      (s) =>
+        s.x / SB_CX < 0.30 &&
+        s.y / SB_CY >= 0.08 &&
+        s.y / SB_CY < 0.78 &&
+        !isSyncMarkerOnly(s.text),
+    )
+    .map((s) => s.text.split('\n')[0]?.trim() ?? '')
+    .filter((t) => t && !MENU_SECTION_LABELS.has(t))
+
+  if (sidebarTexts.length === 0) return null
 
   const picked =
-    menuTexts.find((t) => t.startsWith('▶')) ??
-    menuTexts.find((t) => !MENU_SECTION_LABELS.has(t)) ??
-    menuTexts[0]
+    sidebarTexts.find((t) => t.startsWith('▶')) ??
+    sidebarTexts.find((t) => !/^#\d/.test(t)) ??
+    sidebarTexts[0]
 
   return picked.replace(/^▶\s*/, '').trim() || null
 }
@@ -287,24 +370,69 @@ export function isSyncMarkerOnly(text: string): boolean {
   return /^#\d+\s*$/.test(text.trim())
 }
 
-function toScreenBoxes(shapes: RawShape[]): SlideTextBox[] {
+function isScreenTextExcluded(s: RawShape): boolean {
+  const firstLine = s.text.split('\n')[0]?.trim() ?? ''
+  return (
+    isSyncMarkerOnly(s.text) ||
+    isMenu(s.x, s.y, s.w, s.h) ||
+    isNarration(s.x, s.y, s.w, s.h) ||
+    isScreenDesc(s.x, s.y, s.w, s.h) ||
+    isScreenNum(s.x, s.y, s.w, s.h) ||
+    isCourseName(s.x, s.y, s.w, s.h) ||
+    isChapterName(s.x, s.y, s.w, s.h) ||
+    isImageNum(s.x, s.y, s.w, s.h) ||
+    isDirectorNote(s.text) ||
+    MENU_SECTION_LABELS.has(firstLine) ||
+    /^출처\s*:/.test(s.text.trim())
+  )
+}
+
+function rawShapeToBox(s: RawShape, index: number): SlideTextBox {
+  return {
+    id: String(index),
+    text: s.text,
+    x: s.x,
+    y: s.y,
+    w: s.w,
+    h: s.h,
+    font_size: s.fontSize,
+  }
+}
+
+/** 화면 세로 밴드(8%~78%) 안인지 — 높이 0이면 상단 y 기준 */
+function isInScreenVerticalBand(y: number, h: number): boolean {
+  const mid = h > 0 ? (y + h / 2) / SB_CY : y / SB_CY
+  return mid >= 0.08 && mid < 0.78
+}
+
+/** 좌표 분류 실패 시 화면 세로 밴드 안의 비-UI 텍스트 보완 */
+function findFallbackScreenText(shapes: RawShape[]): SlideTextBox[] {
   return shapes
+    .filter((s) => {
+      if (!s.text.trim() || isScreenTextExcluded(s)) return false
+      if (overlapsScreenContent(s.x, s.y, s.w, s.h) && !isMenu(s.x, s.y, s.w, s.h)) {
+        return true
+      }
+      if (!isInScreenVerticalBand(s.y, s.h) || isMenu(s.x, s.y, s.w, s.h)) return false
+      const xStart = s.x / SB_CX
+      const xEnd = (s.x + Math.max(s.w, SB_CX * 0.02)) / SB_CX
+      return xEnd > 0.10 && xStart < 0.80
+    })
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .map(rawShapeToBox)
+}
+
+function toScreenBoxes(shapes: RawShape[]): SlideTextBox[] {
+  const primary = shapes
     .filter(
       (s) =>
-        overlapsScreenContent(s.x, s.y, s.w, s.h) &&
-        !isMenu(s.x, s.y, s.w, s.h) &&
-        !isSyncMarkerOnly(s.text),
+        overlapsScreenContent(s.x, s.y, s.w, s.h) && !isScreenTextExcluded(s),
     )
     .sort((a, b) => a.y - b.y || a.x - b.x)
-    .map((s, index) => ({
-      id: String(index),
-      text: s.text,
-      x: s.x,
-      y: s.y,
-      w: s.w,
-      h: s.h,
-      font_size: s.fontSize,
-    }))
+    .map(rawShapeToBox)
+
+  if (primary.length > 0) return primary
+  return findFallbackScreenText(shapes)
 }
 
 function findSpTree(root: Element): Element | null {
@@ -324,7 +452,6 @@ function parseSlideXml(xml: string, slideNum: number): ParsedSlide | null {
   const snShapes = shapes.filter((s) => isScreenNum(s.x, s.y, s.w, s.h))
   const cnShapes = shapes.filter((s) => isCourseName(s.x, s.y, s.w, s.h))
   const chShapes = shapes.filter((s) => isChapterName(s.x, s.y, s.w, s.h))
-  const menuShapes = shapes.filter((s) => isMenu(s.x, s.y, s.w, s.h))
   const descShapes = shapes.filter((s) => isScreenDesc(s.x, s.y, s.w, s.h))
   const imgShapes = shapes.filter((s) => isImageNum(s.x, s.y, s.w, s.h))
   const narShapes = shapes.filter((s) => isNarration(s.x, s.y, s.w, s.h))
@@ -384,7 +511,7 @@ function parseSlideXml(xml: string, slideNum: number): ParsedSlide | null {
     screen_num: screenNum,
     course_name: courseName,
     chapter_name: chapterName,
-    current_section: pickCurrentSection(menuShapes),
+    current_section: pickCurrentSection(shapes),
     screen_text: screenBoxes.length > 0 ? screenBoxes : null,
     screen_desc: screenDesc,
     image_nums: imageNums,
