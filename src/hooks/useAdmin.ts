@@ -112,23 +112,32 @@ export function useUpdateProfileRole() {
   })
 }
 
-export function useInviteUser() {
+export function useRegisterUser() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async ({
       email,
       name,
+      password,
+      role,
     }: {
       email: string
       name: string
+      password: string
+      role: UserRole
     }): Promise<void> => {
       const { data: sessionData } = await supabase.auth.getSession()
       const token = sessionData.session?.access_token
       if (!token) throw new Error('로그인이 필요합니다.')
 
-      const response = await supabase.functions.invoke('invite-user', {
-        body: { email: email.trim(), name: name.trim() },
+      const response = await supabase.functions.invoke('register-user', {
+        body: {
+          email: email.trim(),
+          name: name.trim(),
+          password,
+          role,
+        },
       })
 
       if (response.error) {
@@ -142,6 +151,29 @@ export function useInviteUser() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profilesQueryKey })
+    },
+  })
+}
+
+/** @deprecated register-user 사용 */
+export function useInviteUser() {
+  return useRegisterUser()
+}
+
+export function useDeleteProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (projectId: string): Promise<void> => {
+      const { error } = await supabase.rpc('admin_delete_project', {
+        p_project_id: projectId,
+      })
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: allProjectsQueryKey })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
   })
 }

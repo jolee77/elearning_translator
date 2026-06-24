@@ -45,18 +45,39 @@ export function useExpertReviews(projectId: string | undefined) {
   })
 }
 
-export function useExpertReviewItems(reviewId: string | undefined) {
+export function useExpertReviewItems(reviewId: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: [...expertReviewItemsQueryKey, reviewId],
+    queryKey: [...expertReviewItemsQueryKey, reviewId, projectId],
     queryFn: async (): Promise<ExpertReviewItem[]> => {
-      const { data, error } = await supabase
+      const { data: items, error } = await supabase
         .from('expert_review_items')
         .select('*')
         .eq('expert_review_id', reviewId!)
         .order('created_at', { ascending: true })
 
       if (error) throw error
-      return data
+      if (!items.length || !projectId) return items
+
+      const { data: translations, error: trError } = await supabase
+        .from('translations')
+        .select('slide_id, field, source, vi_text')
+        .eq('project_id', projectId)
+
+      if (trError) throw trError
+
+      const trMap = new Map(
+        (translations ?? []).map((t) => [`${t.slide_id}:${t.field}`, t]),
+      )
+
+      return items.map((item) => {
+        const tr = trMap.get(`${item.slide_id}:${item.field}`)
+        return {
+          ...item,
+          source: tr?.source,
+          vi_text: tr?.vi_text,
+          original_vi_text: item.original_vi_text ?? tr?.vi_text,
+        }
+      })
     },
     enabled: !!reviewId,
   })
@@ -102,60 +123,32 @@ export interface CreateExpertReviewInput {
   memo: string
 }
 
+function mapCreateExpertReviewError(message: string): string {
+  if (message.includes('No translations')) {
+    return '번역 데이터가 없습니다. 먼저 번역을 완료해 주세요.'
+  }
+  if (message.includes('Access denied') || message.includes('Authentication required')) {
+    return '검증 링크를 생성할 권한이 없습니다.'
+  }
+  return message
+}
+
 export function useCreateExpertReview() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (input: CreateExpertReviewInput): Promise<ExpertReview> => {
-      const { data: translations, error: trError } = await supabase
-        .from('translations')
-        .select('*')
-        .eq('project_id', input.projectId)
-        .order('created_at', { ascending: true })
+      const { data: review, error: reviewError } = await supabase.rpc('create_expert_review', {
+        p_project_id: input.projectId,
+        p_expert_name: input.reviewerName.trim(),
+        p_expert_email: input.reviewerEmail.trim(),
+        p_message: input.memo.trim() || null,
+      })
 
-      if (trError) throw trError
-      if (!translations?.length) {
-        throw new Error('번역 데이터가 없습니다. 먼저 번역을 완료해 주세요.')
+      if (reviewError) {
+        throw new Error(mapCreateExpertReviewError(reviewError.message))
       }
-
-      const token = generateReviewToken()
-
-      const { data: review, error: reviewError } = await supabase
-        .from('expert_reviews')
-        .insert({
-          project_id: input.projectId,
-          token,
-          status: 'pending',
-          expert_name: input.reviewerName.trim(),
-          expert_email: input.reviewerEmail.trim(),
-          message: input.memo.trim() || null,
-        })
-        .select()
-        .single()
-
-      if (reviewError) throw reviewError
-
-      const items = translations.map((t) => ({
-        expert_review_id: review.id,
-        project_id: input.projectId,
-        slide_id: t.slide_id,
-        field: t.field,
-        status: 'pending' as const,
-      }))
-
-      const { error: itemsError } = await supabase.from('expert_review_items').insert(items)
-      if (itemsError) {
-        await supabase.from('expert_reviews').delete().eq('id', review.id)
-        throw itemsError
-      }
-
-      const { error: statusError } = await supabase
-        .from('projects')
-        .update({ status: 'expert_review' })
-        .eq('id', input.projectId)
-
-      if (statusError) throw statusError
 
       if (user) {
         await supabase.from('change_logs').insert({
@@ -165,12 +158,12 @@ export function useCreateExpertReview() {
           detail: `전문가 검증 요청: ${input.reviewerName}`,
           metadata: {
             expert_email: input.reviewerEmail,
-            token,
+            token: review.token,
           },
         })
       }
 
-      return review
+      return review as ExpertReview
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
@@ -236,8 +229,13 @@ export function useCompleteExpertReview() {
 }
 
 export function getExpertReviewStats(items: ExpertReviewItem[]) {
-  const approved = items.filter((i) => i.status === 'approved').length
-  const modified = items.filter((i) => i.status === 'rejected').length
+  const reviewed = items.filter((i) => i.status !== 'pending').length
   const pending = items.filter((i) => i.status === 'pending').length
-  return { approved, modified, pending, total: items.length }
+  const changed = items.filter(
+    (i) =>
+      i.original_vi_text &&
+      i.vi_text &&
+      i.original_vi_text.trim() !== i.vi_text.trim(),
+  ).length
+  return { reviewed, pending, changed, total: items.length }
 }

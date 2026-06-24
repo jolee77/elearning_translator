@@ -213,12 +213,12 @@ export function DoneStep({ project }: DoneStepProps) {
           <h4 className="text-sm font-semibold text-gray-800">전문가 검토 통계</h4>
           <div className="mt-3 flex flex-wrap gap-4">
             <div className="rounded-lg bg-emerald-50 px-4 py-2">
-              <p className="text-xs text-emerald-600">승인</p>
-              <p className="text-lg font-semibold text-emerald-800">{stats.approved}건</p>
+              <p className="text-xs text-emerald-600">검토 완료</p>
+              <p className="text-lg font-semibold text-emerald-800">{stats.reviewed}건</p>
             </div>
             <div className="rounded-lg bg-amber-50 px-4 py-2">
-              <p className="text-xs text-amber-600">수정</p>
-              <p className="text-lg font-semibold text-amber-800">{stats.modified}건</p>
+              <p className="text-xs text-amber-600">번역 수정</p>
+              <p className="text-lg font-semibold text-amber-800">{stats.changed}건</p>
             </div>
             <div className="rounded-lg bg-gray-50 px-4 py-2">
               <p className="text-xs text-gray-500">전체</p>

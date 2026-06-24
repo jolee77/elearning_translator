@@ -266,12 +266,22 @@ function pickCurrentSection(menuShapes: RawShape[]): string | null {
   return picked.replace(/^▶\s*/, '').trim() || null
 }
 
+/** 나레이션·화면 싱크용 마커 (#1, #2 …) — 화면 텍스트 추출 시 제외 */
+export function isSyncMarkerOnly(text: string): boolean {
+  return /^#\d+\s*$/.test(text.trim())
+}
+
 function toScreenBoxes(shapes: RawShape[]): SlideTextBox[] {
   const menuShapes = shapes.filter((s) => isMenu(s.x, s.y, s.w, s.h))
   const menuSet = new Set(menuShapes)
 
   return shapes
-    .filter((s) => isScreen(s.x, s.y, s.w, s.h) && !menuSet.has(s))
+    .filter(
+      (s) =>
+        isScreen(s.x, s.y, s.w, s.h) &&
+        !menuSet.has(s) &&
+        !isSyncMarkerOnly(s.text),
+    )
     .sort((a, b) => a.y - b.y || a.x - b.x)
     .map((s, index) => ({
       id: String(index),

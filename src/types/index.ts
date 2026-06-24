@@ -26,7 +26,7 @@ export type SlideType =
 
 export type ExpertReviewStatus = 'pending' | 'in_progress' | 'done'
 
-export type ExpertReviewItemStatus = 'pending' | 'approved' | 'rejected'
+export type ExpertReviewItemStatus = 'pending' | 'approved' | 'rejected' | 'reviewed'
 
 export type VerificationApplyStatus = 'pending' | 'applied' | 'skipped'
 
@@ -189,6 +189,8 @@ export interface ExpertReviewItem {
   /** RPC/UI: translations 조인 시 채워짐 */
   source?: string
   vi_text?: string
+  original_vi_text?: string
+  back_translation?: string
 }
 
 export interface ChangeLog {
@@ -305,6 +307,15 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
+      create_expert_review: {
+        Args: {
+          p_project_id: string
+          p_expert_name: string
+          p_expert_email: string
+          p_message?: string | null
+        }
+        Returns: ExpertReview
+      }
       get_expert_review_by_token: {
         Args: { p_token: string }
         Returns: ExpertReviewByTokenResult
@@ -321,6 +332,10 @@ export interface Database {
       }
       complete_expert_review: {
         Args: { p_token: string }
+        Returns: { success: boolean }
+      }
+      admin_delete_project: {
+        Args: { p_project_id: string }
         Returns: { success: boolean }
       }
     }

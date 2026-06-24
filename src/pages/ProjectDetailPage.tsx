@@ -4,8 +4,7 @@ import { ExtractionStep } from '../components/project/ExtractionStep'
 import { SpellingStep } from '../components/project/SpellingStep'
 import { StatusBadge } from '../components/project/StatusBadge'
 import { StepNav } from '../components/project/StepNav'
-import { TranslationStep } from '../components/project/TranslationStep'
-import { VerificationStep } from '../components/project/VerificationStep'
+import { TranslationVerificationStep } from '../components/project/TranslationVerificationStep'
 import { ExpertReviewStep } from '../components/project/ExpertReviewStep'
 import { DoneStep } from '../components/project/DoneStep'
 import { Spinner } from '../components/ui/Spinner'
@@ -101,25 +100,19 @@ export function ProjectDetailPage() {
       )}
 
       {viewStep === 3 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-          <TranslationStep project={project} />
+        <div className="nb-card nb-input-surface p-4 sm:p-6">
+          <TranslationVerificationStep project={project} />
         </div>
       )}
 
       {viewStep === 4 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-          <VerificationStep project={project} />
-        </div>
-      )}
-
-      {viewStep === 5 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="nb-card p-4 sm:p-6">
           <ExpertReviewStep project={project} />
         </div>
       )}
 
-      {viewStep === 6 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+      {viewStep === 5 && (
+        <div className="nb-card p-4 sm:p-6">
           <DoneStep project={project} />
         </div>
       )}

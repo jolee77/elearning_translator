@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import {
-  useInviteUser,
   useProfiles,
+  useRegisterUser,
   useUpdateProfileRole,
 } from '../../hooks/useAdmin'
 import { useToast } from '../../hooks/ToastProvider'
@@ -25,12 +25,14 @@ export function UsersPage() {
   const { profile: currentProfile } = useAuth()
   const { data: profiles, isLoading, error } = useProfiles()
   const updateRole = useUpdateProfileRole()
-  const inviteUser = useInviteUser()
+  const registerUser = useRegisterUser()
   const { showToast } = useToast()
 
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteName, setInviteName] = useState('')
-  const [showInviteForm, setShowInviteForm] = useState(false)
+  const [registerEmail, setRegisterEmail] = useState('')
+  const [registerName, setRegisterName] = useState('')
+  const [registerPassword, setRegisterPassword] = useState('')
+  const [registerRole, setRegisterRole] = useState<UserRole>('designer')
+  const [showRegisterForm, setShowRegisterForm] = useState(false)
 
   const handleRoleChange = async (id: string, role: UserRole) => {
     if (id === currentProfile?.id) {
@@ -49,137 +51,160 @@ export function UsersPage() {
     }
   }
 
-  const handleInvite = async (e: FormEvent) => {
+  const handleRegister = async (e: FormEvent) => {
     e.preventDefault()
 
     try {
-      await inviteUser.mutateAsync({ email: inviteEmail, name: inviteName })
-      setInviteEmail('')
-      setInviteName('')
-      setShowInviteForm(false)
-      showToast('초대 이메일이 발송되었습니다.', 'success')
+      await registerUser.mutateAsync({
+        email: registerEmail,
+        name: registerName,
+        password: registerPassword,
+        role: registerRole,
+      })
+      setRegisterEmail('')
+      setRegisterName('')
+      setRegisterPassword('')
+      setRegisterRole('designer')
+      setShowRegisterForm(false)
+      showToast('사용자가 등록되었습니다.', 'success')
     } catch (err) {
       showToast(
-        err instanceof Error ? err.message : '사용자 초대에 실패했습니다.',
+        err instanceof Error ? err.message : '사용자 등록에 실패했습니다.',
         'error',
       )
     }
   }
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
+    <div className="nb-app-content">
+      <div className="nb-page-toolbar">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">사용자 관리</h2>
           <p className="mt-1 text-sm text-gray-500">
-            사용자 목록 조회, 역할 변경, 신규 사용자 초대
+            사용자 등록, 목록 조회, 역할 변경
           </p>
         </div>
         <button
           type="button"
-          onClick={() => setShowInviteForm((v) => !v)}
-          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-600"
+          onClick={() => setShowRegisterForm((v) => !v)}
+          className="nb-btn-primary"
         >
-          {showInviteForm ? '초대 취소' : '사용자 초대'}
+          {showRegisterForm ? '등록 취소' : '사용자 등록'}
         </button>
       </div>
 
-      {showInviteForm && (
-        <form
-          onSubmit={handleInvite}
-          className="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
-        >
-          <h3 className="mb-4 text-sm font-semibold text-gray-900">신규 사용자 초대</h3>
+      {showRegisterForm && (
+        <form onSubmit={handleRegister} className="nb-card nb-input-surface mb-6 p-6">
+          <h3 className="mb-4 text-sm font-semibold" style={{ color: '#0958d9' }}>
+            신규 사용자 등록
+          </h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="inviteName" className="mb-1 block text-sm font-medium text-gray-700">
+              <label htmlFor="registerName" className="nb-field-label">
                 이름
               </label>
               <input
-                id="inviteName"
+                id="registerName"
                 type="text"
                 required
-                value={inviteName}
-                onChange={(e) => setInviteName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                value={registerName}
+                onChange={(e) => setRegisterName(e.target.value)}
+                className="nb-input mt-1 w-full"
                 placeholder="홍길동"
               />
             </div>
             <div>
-              <label htmlFor="inviteEmail" className="mb-1 block text-sm font-medium text-gray-700">
+              <label htmlFor="registerEmail" className="nb-field-label">
                 이메일
               </label>
               <input
-                id="inviteEmail"
+                id="registerEmail"
                 type="email"
                 required
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                value={registerEmail}
+                onChange={(e) => setRegisterEmail(e.target.value)}
+                className="nb-input mt-1 w-full"
                 placeholder="user@example.com"
               />
+            </div>
+            <div>
+              <label htmlFor="registerPassword" className="nb-field-label">
+                초기 비밀번호
+              </label>
+              <input
+                id="registerPassword"
+                type="password"
+                required
+                minLength={8}
+                value={registerPassword}
+                onChange={(e) => setRegisterPassword(e.target.value)}
+                className="nb-input mt-1 w-full"
+                placeholder="8자 이상"
+              />
+            </div>
+            <div>
+              <label htmlFor="registerRole" className="nb-field-label">
+                역할
+              </label>
+              <select
+                id="registerRole"
+                value={registerRole}
+                onChange={(e) => setRegisterRole(e.target.value as UserRole)}
+                className="nb-input mt-1 w-full"
+              >
+                <option value="designer">{ROLE_LABELS.designer}</option>
+                <option value="admin">{ROLE_LABELS.admin}</option>
+              </select>
             </div>
           </div>
           <div className="mt-4 flex justify-end">
             <button
               type="submit"
-              disabled={inviteUser.isPending}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-600 disabled:opacity-50"
+              disabled={registerUser.isPending}
+              className="nb-btn-primary"
             >
-              {inviteUser.isPending ? '초대 중...' : '초대 이메일 발송'}
+              {registerUser.isPending ? '등록 중...' : '사용자 등록'}
             </button>
           </div>
         </form>
       )}
 
       {isLoading && (
-        <div className="flex items-center justify-center py-20">
+        <div className="nb-empty-state">
           <p className="text-sm text-gray-500">사용자 목록을 불러오는 중...</p>
         </div>
       )}
 
       {error && (
-        <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="nb-alert nb-alert--error">
           사용자 목록을 불러오지 못했습니다: {error.message}
         </div>
       )}
 
       {profiles && profiles.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="nb-card overflow-hidden">
+          <table className="nb-table">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  이름
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  이메일
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  역할
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  가입일
-                </th>
+                <th>이름</th>
+                <th>이메일</th>
+                <th>역할</th>
+                <th>가입일</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody>
               {profiles.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+                <tr key={user.id}>
+                  <td className="font-medium text-gray-900">
                     {user.name}
                     {user.id === currentProfile?.id && (
                       <span className="ml-2 text-xs text-gray-400">(나)</span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600">
-                    {user.email}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm">
+                  <td>{user.email}</td>
+                  <td>
                     {user.id === currentProfile?.id ? (
-                      <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                        {ROLE_LABELS[user.role]}
-                      </span>
+                      <span className="nb-badge">{ROLE_LABELS[user.role]}</span>
                     ) : (
                       <select
                         value={user.role}
@@ -187,16 +212,14 @@ export function UsersPage() {
                           handleRoleChange(user.id, e.target.value as UserRole)
                         }
                         disabled={updateRole.isPending}
-                        className="rounded-lg border border-gray-300 px-2 py-1 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                        className="nb-input text-sm"
                       >
                         <option value="designer">{ROLE_LABELS.designer}</option>
                         <option value="admin">{ROLE_LABELS.admin}</option>
                       </select>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
-                    {formatDate(user.created_at)}
-                  </td>
+                  <td className="text-gray-500">{formatDate(user.created_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -205,7 +228,7 @@ export function UsersPage() {
       )}
 
       {profiles && profiles.length === 0 && (
-        <div className="rounded-xl border border-dashed border-gray-200 bg-white px-6 py-16 text-center">
+        <div className="nb-empty-state">
           <p className="text-sm text-gray-500">등록된 사용자가 없습니다.</p>
         </div>
       )}

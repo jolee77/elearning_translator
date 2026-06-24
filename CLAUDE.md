@@ -57,8 +57,9 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 - `id`, `project_id`, `token`, `status`, `expert_name`, `expert_email`, `message`, `created_at`
 
 ### expert_review_items
-- `id`, `expert_review_id`, `slide_id`, `field`, `status`, `comment`, `created_at`
-- 한국어/번역문은 `translations` 조인으로 표시 (`source`, `vi_text`)
+- `id`, `expert_review_id`, `slide_id`, `field`, `status`, `comment`, `original_vi_text`, `created_at`
+- `status`: `pending` | `reviewed` (승인/수정완료 구분 없음)
+- 한국어/번역문은 `translations` 조인 (`source`, `vi_text`), 역번역은 `verifications` 조인
 
 ### change_logs
 - `id`, `project_id`, `user_id`, `action`, `detail`, `metadata`, `changed_at`
@@ -70,6 +71,8 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 ## 프로젝트 status 흐름
 uploaded → extracted → spelling → spelling_done → translating → translated → verifying → verified → expert_review → done
 
+> DB `status` 값은 그대로이며, UI 단계는 5단계로 통합됨 (번역·역번역 검증 = Step 3).
+
 ## 전체 화면 구조
 ```
 /login                  로그인
@@ -78,14 +81,13 @@ uploaded → extracted → spelling → spelling_done → translating → transl
 /projects/:id           프로젝트 상세 (단계별 스텝)
   Step1: 추출 확인
   Step2: 맞춤법 검사 결과 + 수정 적용
-  Step3: 번역 결과 확인
-  Step4: 역번역 검증 결과 + 반영 여부 결정
-  Step5: 전문가 검증 요청 (링크 생성)
-  Step6: 완료 → 다운로드
-/review/:token          전문가 검증 (로그인 없이 토큰으로 접속)
+  Step3: 번역·역번역 검증 (통합)
+  Step4: 전문가 검증 요청 (링크 생성) + 검토 현황 표
+  Step5: 완료 → 다운로드
+/review/:token          전문가 검증 (로그인 없이 토큰, 역번역 포함)
 /admin/settings         관리자 - API 키 설정
-/admin/users            관리자 - 사용자 관리
-/admin/projects         관리자 - 전체 프로젝트 현황
+/admin/users            관리자 - 사용자 등록 (초대 아님)
+/admin/projects         관리자 - 전체 프로젝트 현황 + 삭제
 ```
 
 ## PPTX 파싱 로직 (중요)
@@ -209,22 +211,41 @@ const KO_CPM = 320
 ```
 
 ## UI 테마
-- primary: `#162B52` (네이비)
-- accent: `#4B40E0` (인디고)
+- primary: `#162B52` (네이비), accent: `#4B40E0` (인디고)
+- nextBMS 스타일 유틸 클래스(`nb-*`) 적용 예정 — `src/index.css` (2026-06-24 WIP)
 - Tailwind 설정: `tailwind.config.js` + `src/index.css`
 
-## 구현 현황
+## 구현 현황 (2026-06-24)
 
-### 완료
+### 이번 작업에서 완료 (커밋됨, 배포 전)
+- [x] PPTX 추출: 화면텍스트에서 싱크 마커(`#1`, `#2`…) 제외, 나레이션에는 유지 (`isSyncMarkerOnly`)
+- [x] Step 3: 번역·역번역 검증 통합 (`TranslationVerificationStep`)
+- [x] 전문가 검증: 승인/수정완료 버튼 제거 → 번역문+코멘트+완료 단일 저장
+- [x] 전문가 화면: 슬라이드 표 + 클릭 상세, 역번역 결과 표시
+- [x] 설계자 화면: 슬라이드 검토 현황 표 + 변경 항목 표시
+- [x] 관리자: 프로젝트 삭제 (`admin_delete_project` RPC)
+- [x] 관리자: 사용자 초대 → 등록 (`register-user` Edge Function, 역할 선택)
+- [x] `AutoResizeTextarea` 컴포넌트
+- [x] DB 마이그레이션: `20250624180000_workflow_updates.sql`
+
+### 저녁 배포 전 남은 작업
+- [ ] Supabase: 마이그레이션 `20250624180000` 적용 (`supabase db push` 또는 SQL 실행)
+- [ ] Supabase: `register-user` Edge Function 배포 (`supabase functions deploy register-user`)
+- [ ] nextBMS 디자인: `index.css`에 `nb-*` 유틸 클래스 추가, `Layout.tsx` 등 전역 스타일 반영
+- [ ] 기존 `VerificationStep.tsx` / `TranslationStep.tsx` 정리 (미사용 시 제거)
+- [ ] Vercel 배포: `main` 푸시 후 동작 확인
+
+### 완료 (이전)
 - [x] Tailwind CSS, Supabase Auth, 라우팅, Layout
-- [x] PPTX 업로드 → 파싱 → slides 저장 (`pptxParser`, `useSlides`, ExtractionStep)
+- [x] PPTX 업로드 → 파싱 → slides 저장
 - [x] Edge Function (맞춤법, 번역, 역번역, 용어 추출)
 - [x] 전문가 검증 (토큰 기반 UI + RPC)
-- [x] VN PPTX 생성 + 엑셀 산출물 (`pptxGenerator`, `xlsxGenerator`, DoneStep)
+- [x] VN PPTX 생성 + 엑셀 산출물
 - [x] 관리자 설정/사용자/프로젝트 화면
 - [x] DB 컬럼명 Supabase 스키마와 통일
 
 ### 미구현 / 개선
+- [ ] nextBMS 디자인 포맷 전역 적용 (WIP)
 - [ ] 공통 UI 컴포넌트 리팩터 (Button, Card, Badge 등)
 - [ ] `01_schema.sql` 레포에 DDL 문서화
 
