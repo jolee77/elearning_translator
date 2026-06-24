@@ -35,6 +35,7 @@ import type { Project, SpellingResult } from '../../types'
 
 interface SpellingStepProps {
   project: Project
+  onStepComplete?: () => void
 }
 
 type CheckPhase = 'idle' | 'running' | 'done' | 'error'
@@ -46,7 +47,7 @@ const WORKFLOW_STEPS = [
   '검토 완료 → 번역',
 ] as const
 
-export function SpellingStep({ project }: SpellingStepProps) {
+export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
   const { showToast } = useToast()
   const { data: slides = [], isLoading: slidesLoading } = useSlides(project.id)
   const { data: results = [], isLoading: resultsLoading } = useSpellingResults(project.id)
@@ -295,6 +296,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
     try {
       await completeReview.mutateAsync({ projectId: project.id })
       showToast('맞춤법 검토가 완료되었습니다. 번역 단계로 진행할 수 있습니다.', 'success')
+      onStepComplete?.()
     } catch (err) {
       showToast(err instanceof Error ? err.message : '완료 처리에 실패했습니다.', 'error')
     }

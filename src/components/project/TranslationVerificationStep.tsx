@@ -36,13 +36,14 @@ import type {
 
 interface TranslationVerificationStepProps {
   project: Project
+  onStepComplete?: () => void
 }
 
 function formatSeconds(seconds: number): string {
   return `${seconds.toFixed(1)}초`
 }
 
-export function TranslationVerificationStep({ project }: TranslationVerificationStepProps) {
+export function TranslationVerificationStep({ project, onStepComplete }: TranslationVerificationStepProps) {
   const { showToast } = useToast()
   const { data: slides = [] } = useSlides(project.id)
   const { data: translations = [], isLoading: translationsLoading } = useTranslations(project.id)
@@ -253,6 +254,16 @@ export function TranslationVerificationStep({ project }: TranslationVerification
       showToast('역번역 검증을 먼저 실행해 주세요.', 'error')
       return
     }
+    const missingVerificationCount = translations.filter(
+      (t) => t.vi_text?.trim() && !verificationByTranslationId.has(t.id),
+    ).length
+    if (missingVerificationCount > 0) {
+      showToast(
+        `역번역 결과가 없는 항목이 ${missingVerificationCount}건 있습니다. 역번역 검증을 다시 실행해 주세요.`,
+        'error',
+      )
+      return
+    }
     if (pendingReviewIds.length > 0) {
       showToast('주의·불일치 항목의 반영 여부를 모두 선택해 주세요.', 'error')
       return
@@ -286,6 +297,7 @@ export function TranslationVerificationStep({ project }: TranslationVerification
     try {
       await finalize.mutateAsync({ projectId: project.id, appliedUpdates })
       showToast('번역·역번역 검증이 완료되었습니다. 전문가 검증을 요청할 수 있습니다.', 'success')
+      onStepComplete?.()
     } catch (err) {
       showToast(err instanceof Error ? err.message : '완료 처리에 실패했습니다.', 'error')
     }
@@ -310,7 +322,7 @@ export function TranslationVerificationStep({ project }: TranslationVerification
         <div>
           <h3 className="text-base font-semibold text-gray-900">Step 3. 번역·역번역 검증</h3>
           <p className="mt-0.5 text-sm text-gray-500">
-            AI 번역 후 역번역으로 품질을 확인하고, 나레이션 싱크 마커(#1, #2…)는 유지됩니다.
+            AI 번역 후 화면텍스트·나레이션 모두 역번역으로 품질을 확인합니다. 나레이션 싱크 마커(#1, #2…)는 유지됩니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -405,7 +417,7 @@ export function TranslationVerificationStep({ project }: TranslationVerification
           hint={
             isTranslating
               ? `${eligibleSlides.length}개 슬라이드를 3개씩 나누어 번역합니다.`
-              : '나레이션 번역을 4건씩 나누어 역번역·품질 검증합니다.'
+              : '화면텍스트·나레이션 번역을 4건씩 나누어 역번역·품질 검증합니다.'
           }
         />
       )}
@@ -436,9 +448,8 @@ export function TranslationVerificationStep({ project }: TranslationVerification
                     ? getNarrationSpeedInfo(tr, project.target_lang)
                     : null
                   const isDirty = dirtyIds.has(tr.id)
-                  const verification = isNarration
-                    ? verificationByTranslationId.get(tr.id)
-                    : undefined
+                  const verification = verificationByTranslationId.get(tr.id)
+                  const showVerificationColumn = verification != null || verifications.length > 0
 
                   return (
                     <div key={tr.id} className="px-4 py-3">
@@ -465,7 +476,7 @@ export function TranslationVerificationStep({ project }: TranslationVerification
                         )}
                       </div>
                       <div
-                        className={`grid gap-3 ${verification ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}
+                        className={`grid gap-3 ${showVerificationColumn ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}
                       >
                         <div>
                           <p className="nb-field-label">한국어</p>
@@ -491,7 +502,7 @@ export function TranslationVerificationStep({ project }: TranslationVerification
                             </button>
                           )}
                         </div>
-                        {verification && (
+                        {verification ? (
                           <div>
                             <p className="nb-field-label">역번역</p>
                             <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
@@ -523,7 +534,14 @@ export function TranslationVerificationStep({ project }: TranslationVerification
                               />
                             )}
                           </div>
-                        )}
+                        ) : showVerificationColumn ? (
+                          <div>
+                            <p className="nb-field-label">역번역</p>
+                            <p className="mt-1 text-sm text-gray-400">
+                              역번역 결과가 없습니다. 「역번역 검증」을 다시 실행해 주세요.
+                            </p>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   )

@@ -34,16 +34,18 @@ const STATUS_ORDER: ProjectStatus[] = [
 export function statusToStep(status: ProjectStatus): number {
   switch (status) {
     case 'uploaded':
-    case 'extracted':
       return 1
-    case 'spelling':
-    case 'spelling_done':
+    case 'extracted':
       return 2
+    case 'spelling':
+      return 2
+    case 'spelling_done':
+      return 3
     case 'translating':
     case 'translated':
     case 'verifying':
-    case 'verified':
       return 3
+    case 'verified':
     case 'expert_review':
       return 4
     case 'done':

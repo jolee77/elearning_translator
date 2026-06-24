@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { verifyTranslations } from '../lib/claudeApi'
 import { type ChunkProgress, mergeChunkProgress } from '../lib/chunkProgress'
-import { NARRATION_FIELD_KEY } from '../lib/lang'
 import { supabase } from '../lib/supabase'
 import type { Translation, Verification, VerificationApplyStatus } from '../types'
 import { useAuth } from './useAuth'
@@ -45,14 +44,14 @@ export function useRunVerification() {
         .from('translations')
         .select('id')
         .eq('project_id', projectId)
-        .eq('field', NARRATION_FIELD_KEY)
         .not('vi_text', 'is', null)
+        .neq('vi_text', '')
 
       if (error) throw error
 
       const translationIds = (translations ?? []).map((row) => row.id)
       if (translationIds.length === 0) {
-        throw new Error('검증할 나레이션 번역이 없습니다.')
+        throw new Error('검증할 번역이 없습니다.')
       }
 
       await supabase.from('projects').update({ status: 'verifying' }).eq('id', projectId)
@@ -67,7 +66,7 @@ export function useRunVerification() {
 
       for (let i = 0; i < batches.length; i++) {
         onChunkProgress?.(
-          mergeChunkProgress(i + 1, batches.length, '나레이션 묶음 AI 역번역'),
+          mergeChunkProgress(i + 1, batches.length, '번역 항목 묶음 AI 역번역'),
         )
 
         await verifyTranslations(projectId, {

@@ -89,19 +89,19 @@ export function ProjectDetailPage() {
 
       {viewStep === 1 && (
         <div className="nb-card p-4 sm:p-6">
-          <ExtractionStep project={project} />
+          <ExtractionStep project={project} onStepComplete={() => setViewStep(2)} />
         </div>
       )}
 
       {viewStep === 2 && (
         <div className="nb-card p-4 sm:p-6">
-          <SpellingStep project={project} />
+          <SpellingStep project={project} onStepComplete={() => setViewStep(3)} />
         </div>
       )}
 
       {viewStep === 3 && (
         <div className="nb-card nb-input-surface p-4 sm:p-6">
-          <TranslationVerificationStep project={project} />
+          <TranslationVerificationStep project={project} onStepComplete={() => setViewStep(4)} />
         </div>
       )}
 

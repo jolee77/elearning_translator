@@ -8,7 +8,6 @@ import {
 import { callClaudeJson } from '../_shared/claude.ts'
 import { handleCors } from '../_shared/cors.ts'
 import { HttpError, chunk, errorResponse, jsonResponse, parseJsonBody } from '../_shared/http.ts'
-import { NARRATION_FIELD_KEY } from '../_shared/slides.ts'
 
 const BATCH_SIZE = 4
 
@@ -88,9 +87,12 @@ const SYSTEM_PROMPT = `당신은 번역 품질 검증 전문가입니다.
 
 규칙:
 - 역번역은 자연스러운 한국어로 작성합니다.
+- 화면텍스트(screen_text)는 UI에 표시되는 짧은 문구이므로 간결하게 역번역합니다.
+- 나레이션(tr_narration)은 구두 발화에 맞게 자연스럽게 역번역합니다.
 - similarity_score는 0~100 정수 (100이 완벽 일치).
 - 의미 누락, 오역, 어색한 표현이 있으면 issues에 한국어로 설명합니다.
 - 문제가 없으면 issues는 null로 둡니다.
+- 입력의 모든 translation_id에 대해 results를 반드시 포함합니다.
 - 반드시 요청된 JSON 형식만 출력합니다.`
 
 function buildVerifyPrompt(items: TranslationRow[]): string {
@@ -101,12 +103,13 @@ function buildVerifyPrompt(items: TranslationRow[]): string {
     translated_text: item.vi_text,
   }))
 
-  return `다음 나레이션 번역(tr_narration)에 대해 역번역 검증을 수행하세요.
+  return `다음 번역 항목(화면텍스트·나레이션)에 대해 역번역 검증을 수행하세요.
 
 입력:
 ${JSON.stringify(payload, null, 2)}
 
 각 항목에 대해 translated_text를 한국어로 역번역하고 ko_text와 비교하세요.
+입력에 포함된 모든 translation_id에 대해 results 항목을 빠짐없이 반환하세요.
 
 다음 JSON 형식으로만 응답하세요:
 {
@@ -150,8 +153,8 @@ serve(async (req) => {
       .from('translations')
       .select('id, project_id, slide_id, field, source, vi_text')
       .eq('project_id', body.project_id)
-      .eq('field', NARRATION_FIELD_KEY)
       .not('vi_text', 'is', null)
+      .neq('vi_text', '')
 
     if (body.translation_ids?.length) {
       query = query.in('id', body.translation_ids)
@@ -166,7 +169,7 @@ serve(async (req) => {
     const translationRows = (translations ?? []) as TranslationRow[]
 
     if (translationRows.length === 0) {
-      throw new HttpError(404, '검증할 나레이션 번역(tr_narration)이 없습니다.')
+      throw new HttpError(404, '검증할 번역이 없습니다.')
     }
 
     const rowsToInsert: VerifyInsertRow[] = []

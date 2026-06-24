@@ -35,17 +35,18 @@ const FILTER_TYPES: Array<{ value: SlideType | 'all'; label: string }> = [
 
 interface ExtractionStepProps {
   project: Project
+  onStepComplete?: () => void
 }
 
-export function ExtractionStep({ project }: ExtractionStepProps) {
+export function ExtractionStep({ project, onStepComplete }: ExtractionStepProps) {
   return (
     <ErrorBoundary>
-      <ExtractionStepContent project={project} />
+      <ExtractionStepContent project={project} onStepComplete={onStepComplete} />
     </ErrorBoundary>
   )
 }
 
-function ExtractionStepContent({ project }: ExtractionStepProps) {
+function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps) {
   const { showToast } = useToast()
   const { data: slides = [], isLoading: slidesLoading } = useSlides(project.id)
   const extractSlides = useExtractSlides()
@@ -175,6 +176,7 @@ function ExtractionStepContent({ project }: ExtractionStepProps) {
     try {
       await completeExtraction.mutateAsync({ projectId: project.id, slides: localSlides })
       showToast('추출이 완료되었습니다. 다음 단계로 진행할 수 있습니다.', 'success')
+      onStepComplete?.()
     } catch (err) {
       showToast(err instanceof Error ? err.message : '추출 완료 처리에 실패했습니다.', 'error')
     }
