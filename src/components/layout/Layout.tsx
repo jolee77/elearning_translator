@@ -2,27 +2,23 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-    isActive
-      ? 'bg-white/10 text-white'
-      : 'text-white/70 hover:bg-white/5 hover:text-white'
-  }`
+  `nb-sidebar-link${isActive ? ' nb-sidebar-link--active' : ''}`
 
 export function Layout() {
   const { profile, signOut } = useAuth()
   const isAdmin = profile?.role === 'admin'
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <aside className="flex w-60 flex-col bg-primary">
-        <div className="border-b border-white/10 px-5 py-5">
-          <h1 className="text-lg font-bold text-white">이러닝 번역기</h1>
-          <p className="mt-0.5 text-xs text-white/50">PPTX 번역 시스템</p>
+    <div className="nb-layout">
+      <aside className="nb-sidebar">
+        <div className="nb-sidebar-brand">
+          <h1>이러닝 번역기</h1>
+          <p>PPTX 번역 시스템</p>
         </div>
 
-        <nav className="flex-1 space-y-1 px-3 py-4">
+        <nav className="nb-sidebar-nav space-y-1">
           <NavLink to="/dashboard" className={navLinkClass}>
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -34,7 +30,7 @@ export function Layout() {
           </NavLink>
 
           <NavLink to="/projects/new" className={navLinkClass}>
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -47,14 +43,10 @@ export function Layout() {
 
           {isAdmin && (
             <>
-              <div className="pt-4 pb-1">
-                <p className="px-3 text-xs font-semibold uppercase tracking-wider text-white/40">
-                  관리자
-                </p>
-              </div>
+              <p className="nb-sidebar-section">관리자</p>
 
               <NavLink to="/admin/settings" className={navLinkClass}>
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -72,7 +64,7 @@ export function Layout() {
               </NavLink>
 
               <NavLink to="/admin/users" className={navLinkClass}>
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -84,7 +76,7 @@ export function Layout() {
               </NavLink>
 
               <NavLink to="/admin/projects" className={navLinkClass}>
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -99,14 +91,11 @@ export function Layout() {
         </nav>
       </aside>
 
-      <div className="flex flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-6">
-          <div />
+      <div className="nb-main">
+        <header className="nb-header">
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-sm font-medium text-gray-900">
-                {profile?.name ?? '사용자'}
-              </p>
+              <p className="text-sm font-medium text-gray-900">{profile?.name ?? '사용자'}</p>
               <p className="text-xs text-gray-500">
                 {profile?.role === 'admin' ? '관리자' : '설계담당자'}
               </p>
@@ -114,14 +103,14 @@ export function Layout() {
             <button
               type="button"
               onClick={() => signOut()}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+              className="nb-btn-secondary py-1.5 text-sm"
             >
               로그아웃
             </button>
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 sm:p-6 xl:p-8">
+        <main className="nb-content nb-app-content">
           <Outlet />
         </main>
       </div>

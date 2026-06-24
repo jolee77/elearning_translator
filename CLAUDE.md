@@ -212,7 +212,7 @@ const KO_CPM = 320
 
 ## UI 테마
 - primary: `#162B52` (네이비), accent: `#4B40E0` (인디고)
-- nextBMS 스타일 유틸 클래스(`nb-*`) 적용 예정 — `src/index.css` (2026-06-24 WIP)
+- nextBMS 스타일 유틸 클래스(`nb-*`) — `src/index.css`, `Layout.tsx`
 - Tailwind 설정: `tailwind.config.js` + `src/index.css`
 
 ## 구현 현황 (2026-06-24)
@@ -229,10 +229,10 @@ const KO_CPM = 320
 - [x] DB 마이그레이션: `20250624180000_workflow_updates.sql`
 
 ### 저녁 배포 전 남은 작업
-- [ ] Supabase: 마이그레이션 `20250624180000` 적용 (`supabase db push` 또는 SQL 실행)
-- [ ] Supabase: `register-user` Edge Function 배포 (`supabase functions deploy register-user`)
-- [ ] nextBMS 디자인: `index.css`에 `nb-*` 유틸 클래스 추가, `Layout.tsx` 등 전역 스타일 반영
-- [ ] 기존 `VerificationStep.tsx` / `TranslationStep.tsx` 정리 (미사용 시 제거)
+- [x] Supabase: 마이그레이션 `20250624180000` 적용 (`supabase db push` 또는 SQL 실행)
+- [x] Supabase: `register-user` Edge Function 배포 (`supabase functions deploy register-user`)
+- [x] nextBMS 디자인: `index.css`에 `nb-*` 유틸 클래스 추가, `Layout.tsx` 등 전역 스타일 반영
+- [x] 기존 `VerificationStep.tsx` / `TranslationStep.tsx` 정리 (미사용 시 제거)
 - [ ] Vercel 배포: `main` 푸시 후 동작 확인
 
 ### 완료 (이전)
@@ -245,9 +245,18 @@ const KO_CPM = 320
 - [x] DB 컬럼명 Supabase 스키마와 통일
 
 ### 미구현 / 개선
-- [ ] nextBMS 디자인 포맷 전역 적용 (WIP)
 - [ ] 공통 UI 컴포넌트 리팩터 (Button, Card, Badge 등)
 - [ ] `01_schema.sql` 레포에 DDL 문서화
+
+## 작업 예정 목록
+
+향후 구현할 기능·개선 사항. 배포·운영과 별도로 순차 진행.
+
+| 우선순위 | 항목 | 설명 |
+|---------|------|------|
+| — | **전문가 검토 되돌리기** | 전문가가 항목을 검토 완료(`reviewed`) 처리한 뒤에도, 다시 수정할 수 있도록 **되돌리기(재편집)** 기능 제공. 완료된 항목을 `pending`으로 되돌리거나 편집 가능 상태로 전환. (`ExpertReviewPage`, `save_expert_review_item` RPC 확장) |
+| — | nextBMS 디자인 전역 적용 | 로그인·대시보드 등 나머지 페이지 `nb-*` 통일 |
+| — | 미사용 Step 컴포넌트 정리 | ~~`VerificationStep.tsx`, `TranslationStep.tsx`~~ 완료 |
 
 ## 폴더 구조
 ```
