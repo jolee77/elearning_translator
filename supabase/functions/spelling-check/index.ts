@@ -12,7 +12,7 @@ import { buildSpellingFields, type SlideRow } from '../_shared/slides.ts'
 
 /** 슬라이드 N개당 Claude API 1회 — useSpelling.SPELLING_BATCH_SIZE와 동일하게 유지 */
 const BATCH_SIZE = 15
-const SPELLING_MAX_TOKENS = 4096
+const SPELLING_MAX_TOKENS = 8192
 
 interface SpellingCheckRequest {
   project_id: string
@@ -51,6 +51,7 @@ type SpellingInsertRow = {
   original: string
   suggestion: string
   applied: boolean
+  issues: SpellingIssue[]
 }
 
 function findFieldResult(
@@ -96,6 +97,8 @@ function mergeSpellingRows(
     for (const expected of expectedFields) {
       const fieldResult = findFieldResult(slideResult?.fields, expected.field_key)
       const suggestion = fieldResult?.corrected_text?.trim() || expected.text
+      const issues =
+        fieldResult?.issues?.filter((issue) => issue.message?.trim()) ?? []
 
       rows.push({
         project_id: projectId,
@@ -104,6 +107,7 @@ function mergeSpellingRows(
         original: expected.text,
         suggestion,
         applied: false,
+        issues,
       })
     }
   }

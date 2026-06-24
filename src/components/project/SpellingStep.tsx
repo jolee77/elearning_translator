@@ -19,6 +19,17 @@ import {
 import { useSlides } from '../../hooks/useSlides'
 import type { ChunkProgress } from '../../lib/chunkProgress'
 import { fieldKeyLabel } from '../../lib/slideFields'
+import {
+  buildSpellableFields,
+  formatSpellingReviewReason,
+  getSlideSpellingCoverage,
+  getSpellingItemStatus,
+  slideCoverageLabel,
+  slideCoverageReason,
+  spellingItemBoxClass,
+  spellingSlideCardClass,
+  spellingStatusBadgeClass,
+} from '../../lib/spellingReview'
 import { isStepAccessible, stepPrerequisiteMessage } from '../../lib/projectStatus'
 import type { Project, SpellingResult } from '../../types'
 
@@ -58,17 +69,72 @@ export function SpellingStep({ project }: SpellingStepProps) {
 
   const slideMap = useMemo(() => new Map(slides.map((s) => [s.id, s])), [slides])
 
-  const groupedResults = useMemo(() => {
-    const groups = new Map<number, SpellingResult[]>()
-    for (const result of results) {
-      const slide = slideMap.get(result.slide_id)
-      const slideNum = slide?.slide_num ?? 0
-      const list = groups.get(slideNum) ?? []
-      list.push(result)
-      groups.set(slideNum, list)
+  const spellableSlideCount = useMemo(
+    () => eligibleSlides.filter((s) => buildSpellableFields(s).length > 0).length,
+    [eligibleSlides],
+  )
+
+  const coveragePriority = (coverage: ReturnType<typeof getSlideSpellingCoverage>) => {
+    switch (coverage) {
+      case 'pending_review':
+        return 0
+      case 'not_checked':
+        return 1
+      case 'reviewed':
+        return 2
+      case 'all_clear':
+        return 3
+      case 'no_text':
+        return 4
     }
-    return [...groups.entries()].sort(([a], [b]) => a - b)
-  }, [results, slideMap])
+  }
+
+  const slideReviewGroups = useMemo(() => {
+    const resultsBySlide = new Map<string, SpellingResult[]>()
+    for (const result of results) {
+      const list = resultsBySlide.get(result.slide_id) ?? []
+      list.push(result)
+      resultsBySlide.set(result.slide_id, list)
+    }
+
+    const checked = results.length > 0
+
+    return eligibleSlides
+      .map((slide) => {
+        const slideResults = resultsBySlide.get(slide.id) ?? []
+        const spellable = buildSpellableFields(slide)
+        let coverage = getSlideSpellingCoverage(slide, slideResults, checked)
+        if (
+          checked &&
+          spellable.length > 0 &&
+          slideResults.length === 0
+        ) {
+          coverage = 'not_checked'
+        }
+        return { slide, slideResults, spellable, coverage }
+      })
+      .sort((a, b) => {
+        const byPriority = coveragePriority(a.coverage) - coveragePriority(b.coverage)
+        if (byPriority !== 0) return byPriority
+        return a.slide.slide_num - b.slide.slide_num
+      })
+  }, [eligibleSlides, results])
+
+  const reviewStats = useMemo(() => {
+    let pendingSlides = 0
+    let clearSlides = 0
+    let excludedSlides = 0
+    let missingSlides = 0
+
+    for (const group of slideReviewGroups) {
+      if (group.coverage === 'pending_review') pendingSlides += 1
+      else if (group.coverage === 'all_clear' || group.coverage === 'reviewed') clearSlides += 1
+      else if (group.coverage === 'no_text') excludedSlides += 1
+      else if (group.coverage === 'not_checked' && group.spellable.length > 0) missingSlides += 1
+    }
+
+    return { pendingSlides, clearSlides, excludedSlides, missingSlides }
+  }, [slideReviewGroups])
 
   const pendingReview = useMemo(
     () => results.filter(isSpellingPendingReview),
@@ -142,8 +208,8 @@ export function SpellingStep({ project }: SpellingStepProps) {
       setCheckPhase('done')
       const message =
         summary.changeCount > 0
-          ? `검사 완료: ${summary.processedSlides}개 슬라이드, 검토 필요 ${summary.changeCount}건 — 슬라이드에는 아직 반영되지 않았습니다.`
-          : `검사 완료: ${summary.processedSlides}개 슬라이드, 수정이 필요한 항목이 없습니다.`
+          ? `검사 완료: 텍스트 있음 ${spellableSlideCount}개 슬라이드 전체 검사, 검토 필요 ${summary.changeCount}건`
+          : `검사 완료: 텍스트 있음 ${spellableSlideCount}개 슬라이드 전체 검사, 수정이 필요한 항목이 없습니다.`
       setLastSummary(message)
       showToast(message, 'success')
     } catch (err) {
@@ -265,6 +331,30 @@ export function SpellingStep({ project }: SpellingStepProps) {
     if (results.length > 0) {
       return (
         <div className="space-y-4">
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700">
+              검사 대상 {spellableSlideCount}슬라이드
+            </span>
+            {reviewStats.pendingSlides > 0 && (
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-900 ring-1 ring-amber-300">
+                검토 필요 {reviewStats.pendingSlides}슬라이드
+              </span>
+            )}
+            <span className="rounded-full bg-sky-100 px-2.5 py-1 text-sky-900">
+              이상 없음 {reviewStats.clearSlides}슬라이드
+            </span>
+            {reviewStats.excludedSlides > 0 && (
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">
+                검사 제외 {reviewStats.excludedSlides}슬라이드
+              </span>
+            )}
+            {reviewStats.missingSlides > 0 && (
+              <span className="rounded-full bg-red-100 px-2.5 py-1 font-medium text-red-800">
+                결과 누락 {reviewStats.missingSlides}슬라이드 — 다시 실행해 주세요
+              </span>
+            )}
+          </div>
+
           {pendingReview.length > 0 && (
             <div className="nb-summary-bar">
               <button
@@ -294,93 +384,144 @@ export function SpellingStep({ project }: SpellingStepProps) {
             </div>
           )}
 
-          {groupedResults.map(([slideNum, slideResults]) => (
-            <div key={slideNum} className="nb-card overflow-hidden">
-              <div className="nb-card-header">
-                <h4 className="text-sm font-semibold text-gray-800">
-                  슬라이드 {slideNum}
-                  <span className="ml-2 font-normal text-gray-500">
-                    ({slideResults.length}건)
+          {slideReviewGroups.map(({ slide, slideResults, spellable, coverage }) => (
+            <div
+              key={slide.id}
+              className={`nb-card overflow-hidden ${spellingSlideCardClass(coverage)}`}
+            >
+              <div
+                className={`nb-card-header ${
+                  coverage === 'pending_review' ? 'bg-amber-50/80' : ''
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-sm font-semibold text-gray-800">
+                    슬라이드 {slide.slide_num}
+                  </h4>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${spellingStatusBadgeClass(coverage)}`}
+                  >
+                    {slideCoverageLabel(coverage)}
                   </span>
-                </h4>
+                  {slideResults.length > 0 && (
+                    <span className="text-xs text-gray-500">
+                      ({slideResults.length}개 필드 검사)
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-600">
+                  {coverage === 'not_checked' && spellable.length > 0 && results.length > 0
+                    ? '검사 결과가 누락되었습니다. 맞춤법 검사를 다시 실행해 주세요.'
+                    : slideCoverageReason(coverage, slide, slideResults)}
+                </p>
               </div>
-              <div className="divide-y divide-gray-100">
-                {slideResults.map((result) => {
-                  const hasChange = hasSpellingChanges(result)
-                  const pending = isSpellingPendingReview(result)
-                  const checked = selectedIds.has(result.id)
 
-                  return (
-                    <div key={result.id} className="px-4 py-3">
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        {pending && (
-                          <label className="inline-flex items-center gap-1.5 text-xs text-gray-700">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleSelected(result.id)}
-                              disabled={isBusy}
-                              className="rounded border-gray-300 text-accent focus:ring-accent/30"
-                            />
-                            슬라이드에 적용
-                          </label>
-                        )}
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-                          {fieldKeyLabel(result.field)}
-                        </span>
-                        {result.applied && (
-                          <span className="text-xs font-medium text-emerald-600">슬라이드 반영됨</span>
-                        )}
-                        {result.skipped && !result.applied && (
-                          <span className="text-xs font-medium text-gray-500">적용 안 함</span>
-                        )}
-                        {!hasChange && (
-                          <span className="text-xs text-gray-500">수정 불필요</span>
-                        )}
-                      </div>
-                      <div className={hasChange ? 'grid gap-3 md:grid-cols-2' : ''}>
-                        <div>
-                          <p className="text-xs font-medium text-gray-500">원문 (추출 텍스트)</p>
-                          <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
-                            {result.original}
-                          </p>
-                        </div>
-                        {hasChange && (
-                          <div>
-                            <p className="text-xs font-medium text-gray-500">AI 수정안</p>
-                            <div className="mt-1">
-                              <SuggestionHighlight
-                                original={result.original}
-                                suggestion={result.suggestion}
+              {slideResults.length > 0 ? (
+                <div className="space-y-3 p-3">
+                  {slideResults.map((result) => {
+                    const itemStatus = getSpellingItemStatus(result)
+                    const pending = isSpellingPendingReview(result)
+                    const hasChange = hasSpellingChanges(result)
+                    const checked = selectedIds.has(result.id)
+
+                    return (
+                      <div
+                        key={result.id}
+                        className={`rounded-lg px-4 py-3 ${spellingItemBoxClass(itemStatus)}`}
+                      >
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          {pending && (
+                            <label className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-900">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleSelected(result.id)}
+                                disabled={isBusy}
+                                className="rounded border-amber-400 text-amber-600 focus:ring-amber-300"
                               />
+                              슬라이드에 적용
+                            </label>
+                          )}
+                          <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200">
+                            {fieldKeyLabel(result.field)}
+                          </span>
+                          {itemStatus === 'pending' && (
+                            <span className="text-xs font-semibold text-amber-800">
+                              검토 필요
+                            </span>
+                          )}
+                          {result.applied && (
+                            <span className="text-xs font-medium text-emerald-700">슬라이드 반영됨</span>
+                          )}
+                          {result.skipped && !result.applied && (
+                            <span className="text-xs font-medium text-gray-500">적용 안 함</span>
+                          )}
+                          {itemStatus === 'no_change' && (
+                            <span className="text-xs font-medium text-sky-700">이상 없음</span>
+                          )}
+                        </div>
+
+                        <p
+                          className={`mb-2 text-xs leading-relaxed ${
+                            itemStatus === 'pending'
+                              ? 'font-medium text-amber-900'
+                              : 'text-gray-600'
+                          }`}
+                        >
+                          {formatSpellingReviewReason(result)}
+                        </p>
+
+                        <div className={hasChange ? 'grid gap-3 md:grid-cols-2' : ''}>
+                          <div>
+                            <p className="text-xs font-medium text-gray-500">원문 (추출 텍스트)</p>
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
+                              {result.original}
+                            </p>
+                          </div>
+                          {hasChange && (
+                            <div>
+                              <p className="text-xs font-medium text-gray-500">AI 수정안</p>
+                              <div className="mt-1">
+                                <SuggestionHighlight
+                                  original={result.original}
+                                  suggestion={result.suggestion}
+                                />
+                              </div>
                             </div>
+                          )}
+                        </div>
+
+                        {pending && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleApplyOne(result)}
+                              disabled={isBusy}
+                              className="rounded-lg border border-amber-500 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                            >
+                              이 항목만 슬라이드에 적용
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSkipOne(result)}
+                              disabled={isBusy}
+                              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              적용 안 함
+                            </button>
                           </div>
                         )}
                       </div>
-                      {pending && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleApplyOne(result)}
-                            disabled={isBusy}
-                            className="rounded-lg border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/5 disabled:opacity-50"
-                          >
-                            이 항목만 슬라이드에 적용
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSkipOne(result)}
-                            disabled={isBusy}
-                            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            적용 안 함
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="px-4 py-3 text-xs text-gray-500">
+                  {spellable.length === 0
+                    ? '화면텍스트·나레이션이 없어 검사하지 않았습니다.'
+                    : '검사 결과가 없습니다.'}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -477,7 +618,7 @@ export function SpellingStep({ project }: SpellingStepProps) {
         <ChunkProgressPanel
           title="맞춤법 검사"
           progress={chunkProgress}
-          hint={`${eligibleSlides.length}개 슬라이드를 5개씩 나누어 검사합니다. 슬라이드 원본은 변경되지 않습니다.`}
+          hint="추출된 화면텍스트·나레이션을 검사합니다. 슬라이드 원본은 변경되지 않습니다."
         />
       )}
 

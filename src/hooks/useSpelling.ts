@@ -2,13 +2,23 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { spellingCheck } from '../lib/claudeApi'
 import { type ChunkProgress, mergeChunkProgress } from '../lib/chunkProgress'
 import { applyFieldCorrection } from '../lib/slideFields'
+import {
+  hasSpellingTextChanges,
+  normalizeSpellingIssues,
+} from '../lib/spellingReview'
 import { supabase } from '../lib/supabase'
 import type { Slide, SpellingResult } from '../types'
 import { useAuth } from './useAuth'
 
 const spellingQueryKey = ['spelling_results'] as const
-/** Edge Function spelling-check BATCH_SIZE와 동일하게 유지 */
-const SPELLING_BATCH_SIZE = 15
+
+function normalizeSpellingResult(row: SpellingResult & { issues?: unknown }): SpellingResult {
+  return {
+    ...row,
+    skipped: row.skipped ?? false,
+    issues: normalizeSpellingIssues(row.issues),
+  }
+}
 
 export interface SpellingCheckSummary {
   resultCount: number
@@ -27,10 +37,7 @@ export function useSpellingResults(projectId: string | undefined) {
         .order('created_at', { ascending: true })
 
       if (error) throw error
-      return (data ?? []).map((row) => ({
-        ...row,
-        skipped: row.skipped ?? false,
-      }))
+      return (data ?? []).map((row) => normalizeSpellingResult(row as SpellingResult))
     },
     enabled: !!projectId,
   })
@@ -62,35 +69,19 @@ export function useRunSpellingCheck() {
 
       if (statusError) throw statusError
 
-      const batches: string[][] = []
-      for (let i = 0; i < slideIds.length; i += SPELLING_BATCH_SIZE) {
-        batches.push(slideIds.slice(i, i + SPELLING_BATCH_SIZE))
-      }
+      onChunkProgress?.(
+        mergeChunkProgress(0, 1, `${slideIds.length}개 슬라이드 AI 검사 중`),
+      )
+      onProgress?.(5)
 
-      let totalResults = 0
-      let processedSlides = 0
+      const result = await spellingCheck(projectId, slideIds, {
+        resetResults: true,
+        finalize: true,
+      })
 
-      onChunkProgress?.(mergeChunkProgress(0, batches.length, '맞춤법 검사 준비'))
-      onProgress?.(2)
+      onProgress?.(95)
 
-      for (let i = 0; i < batches.length; i++) {
-        onChunkProgress?.(
-          mergeChunkProgress(i + 1, batches.length, '슬라이드 묶음 AI 검사'),
-        )
-
-        const result = await spellingCheck(projectId, batches[i], {
-          resetResults: i === 0,
-          finalize: i === batches.length - 1,
-        })
-
-        totalResults += result.result_count
-        processedSlides += result.processed_slides
-
-        const percent = Math.max(5, Math.round(((i + 1) / batches.length) * 100))
-        onProgress?.(percent)
-      }
-
-      if (totalResults === 0) {
+      if (result.result_count === 0) {
         throw new Error(
           '맞춤법 검사 결과가 저장되지 않았습니다. 추출된 화면 텍스트·나레이션이 있는지 확인해 주세요.',
         )
@@ -112,20 +103,17 @@ export function useRunSpellingCheck() {
             .order('created_at', { ascending: true })
 
           if (error) throw error
-          return (data ?? []).map((row) => ({
-            ...row,
-            skipped: row.skipped ?? false,
-          }))
+          return (data ?? []).map((row) => normalizeSpellingResult(row as SpellingResult))
         },
       })
-      const changeCount = results.filter(hasSpellingChanges).length
+      const changeCount = results.filter(hasSpellingTextChanges).length
 
-      onChunkProgress?.(mergeChunkProgress(batches.length, batches.length, '맞춤법 검사 완료'))
+      onChunkProgress?.(mergeChunkProgress(1, 1, '맞춤법 검사 완료'))
 
       return {
-        resultCount: totalResults,
+        resultCount: result.result_count,
         changeCount,
-        processedSlides,
+        processedSlides: result.processed_slides,
       }
     },
     onSuccess: (_data, variables) => {
@@ -290,12 +278,10 @@ export function issueTypeLabel(type: string): string {
 }
 
 export function hasSpellingChanges(result: SpellingResult): boolean {
-  return result.original.trim() !== result.suggestion.trim()
+  return hasSpellingTextChanges(result)
 }
 
-export function isSpellingPendingReview(result: SpellingResult): boolean {
-  return hasSpellingChanges(result) && !result.applied && !result.skipped
-}
+export { isSpellingPendingReview } from '../lib/spellingReview'
 
 export function isSpellingReviewSettled(results: SpellingResult[]): boolean {
   return results
