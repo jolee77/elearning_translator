@@ -15,6 +15,8 @@ const BATCH_SIZE = 5
 interface SpellingCheckRequest {
   project_id: string
   slide_ids: string[]
+  reset_results?: boolean
+  finalize?: boolean
 }
 
 interface SpellingIssue {
@@ -174,7 +176,11 @@ serve(async (req) => {
     await verifyProjectAccess(serviceClient, user.id, body.project_id)
 
     const apiKey = await getClaudeApiKey(serviceClient)
-    await updateProjectStatus(serviceClient, body.project_id, 'spelling')
+    const shouldFinalize = body.finalize !== false
+
+    if (body.reset_results || shouldFinalize) {
+      await updateProjectStatus(serviceClient, body.project_id, 'spelling')
+    }
 
     const { data: slides, error: slidesError } = await serviceClient
       .from('slides')
@@ -215,14 +221,25 @@ serve(async (req) => {
       rowsToInsert.push(...mergeSpellingRows(body.project_id, batch, response))
     }
 
-    const { error: deleteError } = await serviceClient
-      .from('spelling_results')
-      .delete()
-      .eq('project_id', body.project_id)
-      .in('slide_id', body.slide_ids)
+    if (body.reset_results) {
+      const { error: resetError } = await serviceClient
+        .from('spelling_results')
+        .delete()
+        .eq('project_id', body.project_id)
 
-    if (deleteError) {
-      throw new HttpError(500, `기존 맞춤법 결과 삭제 실패: ${deleteError.message}`)
+      if (resetError) {
+        throw new HttpError(500, `기존 맞춤법 결과 삭제 실패: ${resetError.message}`)
+      }
+    } else {
+      const { error: deleteError } = await serviceClient
+        .from('spelling_results')
+        .delete()
+        .eq('project_id', body.project_id)
+        .in('slide_id', body.slide_ids)
+
+      if (deleteError) {
+        throw new HttpError(500, `기존 맞춤법 결과 삭제 실패: ${deleteError.message}`)
+      }
     }
 
     if (rowsToInsert.length > 0) {
@@ -235,14 +252,16 @@ serve(async (req) => {
       }
     }
 
-    await updateProjectStatus(serviceClient, body.project_id, 'spelling_done')
+    if (shouldFinalize) {
+      await updateProjectStatus(serviceClient, body.project_id, 'spelling_done')
 
-    await serviceClient.from('change_logs').insert({
-      project_id: body.project_id,
-      user_id: user.id,
-      action: 'spelling_applied',
-      detail: `${rowsToInsert.length}건 맞춤법 검사 완료`,
-    })
+      await serviceClient.from('change_logs').insert({
+        project_id: body.project_id,
+        user_id: user.id,
+        action: 'spelling_applied',
+        detail: `${rowsToInsert.length}건 맞춤법 검사 완료`,
+      })
+    }
 
     return jsonResponse({
       success: true,

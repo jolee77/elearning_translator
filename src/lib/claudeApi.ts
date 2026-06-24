@@ -41,10 +41,16 @@ export interface SpellingCheckResponse {
   result_count: number
 }
 
-export function spellingCheck(projectId: string, slideIds: string[]) {
+export function spellingCheck(
+  projectId: string,
+  slideIds: string[],
+  options?: { resetResults?: boolean; finalize?: boolean },
+) {
   return invokeFunction<SpellingCheckResponse>('spelling-check', {
     project_id: projectId,
     slide_ids: slideIds,
+    reset_results: options?.resetResults ?? false,
+    finalize: options?.finalize ?? true,
   })
 }
 

@@ -6,6 +6,13 @@ import type { Slide, SpellingResult } from '../types'
 import { useAuth } from './useAuth'
 
 const spellingQueryKey = ['spelling_results'] as const
+const SPELLING_BATCH_SIZE = 5
+
+export interface SpellingCheckSummary {
+  resultCount: number
+  changeCount: number
+  processedSlides: number
+}
 
 export function useSpellingResults(projectId: string | undefined) {
   return useQuery({
@@ -36,7 +43,7 @@ export function useRunSpellingCheck() {
       projectId: string
       slideIds: string[]
       onProgress?: (percent: number) => void
-    }): Promise<void> => {
+    }): Promise<SpellingCheckSummary> => {
       if (slideIds.length === 0) {
         throw new Error('검사할 슬라이드가 없습니다.')
       }
@@ -48,17 +55,64 @@ export function useRunSpellingCheck() {
 
       if (statusError) throw statusError
 
-      onProgress?.(5)
+      const batches: string[][] = []
+      for (let i = 0; i < slideIds.length; i += SPELLING_BATCH_SIZE) {
+        batches.push(slideIds.slice(i, i + SPELLING_BATCH_SIZE))
+      }
 
-      const result = await spellingCheck(projectId, slideIds)
+      let totalResults = 0
+      let processedSlides = 0
 
-      if (!result.result_count) {
+      onProgress?.(2)
+
+      for (let i = 0; i < batches.length; i++) {
+        const result = await spellingCheck(projectId, batches[i], {
+          resetResults: i === 0,
+          finalize: i === batches.length - 1,
+        })
+
+        totalResults += result.result_count
+        processedSlides += result.processed_slides
+
+        const percent = Math.max(
+          5,
+          Math.round(((i + 1) / batches.length) * 100),
+        )
+        onProgress?.(percent)
+      }
+
+      if (totalResults === 0) {
         throw new Error(
           '맞춤법 검사 결과가 저장되지 않았습니다. 추출된 화면 텍스트·나레이션이 있는지 확인해 주세요.',
         )
       }
 
-      onProgress?.(100)
+      await queryClient.invalidateQueries({
+        queryKey: [...spellingQueryKey, projectId],
+      })
+      await queryClient.invalidateQueries({ queryKey: ['projects'] })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+
+      const results = await queryClient.fetchQuery({
+        queryKey: [...spellingQueryKey, projectId],
+        queryFn: async (): Promise<SpellingResult[]> => {
+          const { data, error } = await supabase
+            .from('spelling_results')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: true })
+
+          if (error) throw error
+          return data
+        },
+      })
+      const changeCount = results.filter(hasSpellingChanges).length
+
+      return {
+        resultCount: totalResults,
+        changeCount,
+        processedSlides,
+      }
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
@@ -153,4 +207,12 @@ export function issueTypeLabel(type: string): string {
 
 export function hasSpellingChanges(result: SpellingResult): boolean {
   return result.original.trim() !== result.suggestion.trim()
+}
+
+export function isSpellingCheckComplete(status: string): boolean {
+  return status === 'spelling_done'
+}
+
+export function isSpellingCheckInterrupted(status: string): boolean {
+  return status === 'spelling'
 }
