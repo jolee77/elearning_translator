@@ -39,6 +39,50 @@ interface VerifyBatchResponse {
   results: VerifyItemResult[]
 }
 
+type VerifyInsertRow = {
+  project_id: string
+  slide_id: string
+  translation_id: string
+  back_translation: string
+  score: number | null
+  issues: string | null
+  apply_status: string
+}
+
+function findVerifyResult(
+  results: VerifyItemResult[] | undefined,
+  translationId: string,
+): VerifyItemResult | undefined {
+  if (!results?.length) return undefined
+  return results.find((item) => item.translation_id === translationId)
+}
+
+function mergeVerifyRows(
+  projectId: string,
+  batch: TranslationRow[],
+  response: VerifyBatchResponse,
+): VerifyInsertRow[] {
+  const rows: VerifyInsertRow[] = []
+
+  for (const translation of batch) {
+    const item = findVerifyResult(response.results, translation.id)
+    const backTranslation = item?.back_translation?.trim()
+    if (!backTranslation) continue
+
+    rows.push({
+      project_id: projectId,
+      slide_id: translation.slide_id,
+      translation_id: translation.id,
+      back_translation: backTranslation,
+      score: item?.similarity_score ?? null,
+      issues: item?.issues ?? null,
+      apply_status: 'pending',
+    })
+  }
+
+  return rows
+}
+
 const SYSTEM_PROMPT = `당신은 번역 품질 검증 전문가입니다.
 외국어 번역문을 한국어로 역번역(back-translation)하고, 원문과 비교하여 품질을 평가합니다.
 
@@ -125,15 +169,7 @@ serve(async (req) => {
       throw new HttpError(404, '검증할 나레이션 번역(tr_narration)이 없습니다.')
     }
 
-    const rowsToInsert: Array<{
-      project_id: string
-      slide_id: string
-      translation_id: string
-      back_translation: string
-      score: number | null
-      issues: string | null
-      apply_status: string
-    }> = []
+    const rowsToInsert: VerifyInsertRow[] = []
 
     for (const batch of chunk(translationRows, BATCH_SIZE)) {
       const response = await callClaudeJson<VerifyBatchResponse>(
@@ -142,20 +178,14 @@ serve(async (req) => {
         buildVerifyPrompt(batch),
       )
 
-      for (const item of response.results ?? []) {
-        const translation = batch.find((row) => row.id === item.translation_id)
-        if (!translation) continue
+      rowsToInsert.push(...mergeVerifyRows(body.project_id, batch, response))
+    }
 
-        rowsToInsert.push({
-          project_id: body.project_id,
-          slide_id: translation.slide_id,
-          translation_id: translation.id,
-          back_translation: item.back_translation,
-          score: item.similarity_score ?? null,
-          issues: item.issues,
-          apply_status: 'pending',
-        })
-      }
+    if (rowsToInsert.length === 0) {
+      throw new HttpError(
+        502,
+        'AI 역번역 검증 결과를 파싱하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+      )
     }
 
     const translationIds = translationRows.map((row) => row.id)

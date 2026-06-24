@@ -100,10 +100,11 @@ export function buildTranslationFieldKeys(slide: SlideRow): Array<{
 
   if (screenText?.length) {
     screenText.forEach((box, index) => {
-      if (box.text.trim()) {
+      const text = boxText(box, index)
+      if (text) {
         fields.push({
           field_key: `screen_text_${box.id || index}`,
-          ko_text: box.text,
+          ko_text: text,
         })
       }
     })

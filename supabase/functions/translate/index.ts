@@ -9,7 +9,11 @@ import { callClaudeJson } from '../_shared/claude.ts'
 import { handleCors } from '../_shared/cors.ts'
 import { HttpError, chunk, errorResponse, jsonResponse, parseJsonBody } from '../_shared/http.ts'
 import { calcKoCpm, calcTargetWpm, getLangConfig } from '../_shared/lang.ts'
-import { buildTranslationFieldKeys, type SlideRow } from '../_shared/slides.ts'
+import {
+  buildTranslationFieldKeys,
+  NARRATION_FIELD_KEY,
+  type SlideRow,
+} from '../_shared/slides.ts'
 
 const BATCH_SIZE = 3
 
@@ -34,6 +38,76 @@ interface TranslationSlideResult {
 
 interface TranslationBatchResponse {
   results: TranslationSlideResult[]
+}
+
+type TranslationInsertRow = {
+  project_id: string
+  slide_id: string
+  field: string
+  source: string
+  vi_text: string
+  cpm: number
+  vi_wpm: number
+}
+
+function findTranslationItem(
+  items: TranslationItem[] | undefined,
+  fieldKey: string,
+): TranslationItem | undefined {
+  if (!items?.length) return undefined
+
+  const exact = items.find((item) => item.field_key === fieldKey)
+  if (exact) return exact
+
+  if (fieldKey === NARRATION_FIELD_KEY) {
+    return items.find((item) => item.field_key === 'narration')
+  }
+
+  if (fieldKey.startsWith('screen_text_')) {
+    return items.find((item) => item.field_key === fieldKey)
+  }
+
+  if (fieldKey === 'screen_text') {
+    return items.find((item) => item.field_key === 'screen_text')
+      ?? items.find((item) => item.field_key.startsWith('screen_text_'))
+  }
+
+  return undefined
+}
+
+function mergeTranslationRows(
+  projectId: string,
+  batch: SlideRow[],
+  response: TranslationBatchResponse,
+): TranslationInsertRow[] {
+  const rows: TranslationInsertRow[] = []
+
+  for (const slide of batch) {
+    const slideResult = response.results?.find((item) => item.slide_id === slide.id)
+      ?? response.results?.find((item) => {
+        const slideNum = (item as TranslationSlideResult & { slide_num?: number }).slide_num
+        return slideNum != null && slideNum === slide.slide_num
+      })
+
+    const expectedFields = buildTranslationFieldKeys(slide)
+    for (const expected of expectedFields) {
+      const item = findTranslationItem(slideResult?.translations, expected.field_key)
+      const viText = item?.vi_text?.trim()
+      if (!viText) continue
+
+      rows.push({
+        project_id: projectId,
+        slide_id: slide.id,
+        field: expected.field_key,
+        source: expected.ko_text,
+        vi_text: viText,
+        cpm: calcKoCpm(expected.ko_text),
+        vi_wpm: calcTargetWpm(viText),
+      })
+    }
+  }
+
+  return rows
 }
 
 const SYSTEM_PROMPT = `당신은 한국어 이러닝 스토리보드를 외국어로 번역하는 전문 번역가입니다.
@@ -131,15 +205,15 @@ serve(async (req) => {
     }
 
     const slideRows = slides as SlideRow[]
-    const rowsToInsert: Array<{
-      project_id: string
-      slide_id: string
-      field: string
-      source: string
-      vi_text: string
-      cpm: number
-      vi_wpm: number
-    }> = []
+    const rowsToInsert: TranslationInsertRow[] = []
+    const expectedFieldCount = slideRows.reduce(
+      (sum, slide) => sum + buildTranslationFieldKeys(slide).length,
+      0,
+    )
+
+    if (expectedFieldCount === 0) {
+      throw new HttpError(400, '번역할 텍스트가 있는 슬라이드가 없습니다.')
+    }
 
     for (const batch of chunk(slideRows, BATCH_SIZE)) {
       const response = await callClaudeJson<TranslationBatchResponse>(
@@ -148,22 +222,14 @@ serve(async (req) => {
         buildTranslatePrompt(batch, body.target_lang),
       )
 
-      for (const slideResult of response.results ?? []) {
-        const slide = batch.find((item) => item.id === slideResult.slide_id)
-        if (!slide) continue
+      rowsToInsert.push(...mergeTranslationRows(body.project_id, batch, response))
+    }
 
-        for (const item of slideResult.translations ?? []) {
-          rowsToInsert.push({
-            project_id: body.project_id,
-            slide_id: slide.id,
-            field: item.field_key,
-            source: item.ko_text,
-            vi_text: item.vi_text,
-            cpm: calcKoCpm(item.ko_text),
-            vi_wpm: calcTargetWpm(item.vi_text),
-          })
-        }
-      }
+    if (rowsToInsert.length === 0) {
+      throw new HttpError(
+        502,
+        'AI 번역 결과를 파싱하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+      )
     }
 
     if (body.reset_results) {
