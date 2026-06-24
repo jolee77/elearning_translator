@@ -200,6 +200,20 @@ export function getMatchStatus(verification: Verification): MatchStatus {
   return 'fail'
 }
 
+/** 주의·불일치만 사용자 검토가 필요 */
+export function needsVerificationReview(verification: Verification): boolean {
+  const match = getMatchStatus(verification)
+  return match === 'warn' || match === 'fail'
+}
+
+export function isVerificationResolved(
+  verification: Verification,
+  applyStatus: VerificationApplyStatus,
+): boolean {
+  if (!needsVerificationReview(verification)) return true
+  return applyStatus === 'applied' || applyStatus === 'skipped'
+}
+
 export function matchStatusLabel(status: MatchStatus): string {
   switch (status) {
     case 'ok':
