@@ -6,8 +6,27 @@
 
 - React 18 + Vite + TypeScript
 - Tailwind CSS v4
-- Supabase (Auth, DB, Storage)
+- Supabase (Auth, DB, Storage, Edge Functions)
 - React Query + React Router
+- Claude API (Supabase Edge Function 경유)
+
+## 개발 정보
+
+| 항목 | 내용 |
+|------|------|
+| **Frontend** | React, TypeScript, Vite, Tailwind CSS, React Query, React Router |
+| **Backend** | Supabase Edge Functions (Deno), Supabase Auth, Supabase Storage |
+| **Database** | PostgreSQL (Supabase 관리형) |
+| **DB 종류** | PostgreSQL 15 (Supabase) |
+| **DB Host** | `aws-1-ap-northeast-2.pooler.supabase.com` |
+| **DB Name** | `postgres` |
+| **배포 (Frontend)** | Vercel — [elearning-translator.vercel.app](https://elearning-translator.vercel.app) |
+| **배포 (Backend/DB)** | Supabase — 프로젝트 `jprclgxtaxksocxeqoze` (ap-northeast-2) |
+| **AI** | Claude API (`claude-sonnet-4-6`) — Edge Function에서 서버 호출 |
+| **저장소** | Supabase Storage (`pptx-files` 버킷) |
+| **원격 저장소** | `https://github.com/jolee77/elearning_translator.git` |
+
+> **참고:** 별도 Node.js/Express 서버·Redis는 사용하지 않습니다. API·인증·DB는 Supabase가 담당합니다.
 
 ## 시작하기
 

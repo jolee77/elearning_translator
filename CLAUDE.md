@@ -6,10 +6,25 @@
 
 ## 기술 스택
 - Frontend: React 18 + Vite + TypeScript
-- Styling: Tailwind CSS
-- Backend: Supabase (Auth + DB + Storage)
+- Styling: Tailwind CSS v4
+- Backend: Supabase (Auth + DB + Storage + Edge Functions / Deno)
 - AI: Claude API (claude-sonnet-4-6) — Supabase Edge Function에서 호출
-- 배포: Vercel
+- 배포: Vercel (Frontend), Supabase (DB·Edge Functions)
+
+## 개발 정보 (시스템 등록용)
+
+| 필드 | 값 |
+|------|-----|
+| Frontend | `React, TypeScript, Vite, Tailwind CSS, React Query, React Router` |
+| Backend | `Supabase Edge Functions, Supabase Auth, Supabase Storage` |
+| Database | `PostgreSQL` |
+| DB 종류 | `PostgreSQL (Supabase)` |
+| DB Host | `aws-1-ap-northeast-2.pooler.supabase.com` |
+| DB Name | `postgres` |
+
+- Node.js/Express, Redis 미사용
+- Supabase 프로젝트 ref: `jprclgxtaxksocxeqoze` (리전: ap-northeast-2)
+- 프로덕션 URL: https://elearning-translator.vercel.app
 
 ## Supabase 설정
 ```
