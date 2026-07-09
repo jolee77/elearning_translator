@@ -1,0 +1,38 @@
+name: Catalog Changelog Sync
+
+on:
+  push:
+    branches: [main, master, develop]
+
+jobs:
+  sync-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Send changelog to System Catalog
+        env:
+          CATALOG_API_URL: ${{ secrets.CATALOG_API_URL }}
+          CATALOG_SYSTEM_ID: ${{ secrets.CATALOG_SYSTEM_ID }}
+          CATALOG_TOKEN: ${{ secrets.CATALOG_TOKEN }}
+        run: |
+          COMMIT_SHA="${{ github.sha }}"
+          BRANCH="${{ github.ref_name }}"
+          AUTHOR="${{ github.actor }}"
+          MESSAGE=$(git log -1 --pretty=%B | jq -Rs .)
+          COMMITTED_AT=$(git log -1 --pretty=%cI | jq -Rs .)
+
+          curl -sf -X POST "${CATALOG_API_URL}/systems/${CATALOG_SYSTEM_ID}/changelog" \
+            -H "Authorization: Bearer ${CATALOG_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg commit_sha "$COMMIT_SHA" \
+              --arg branch "$BRANCH" \
+              --arg author "$AUTHOR" \
+              --argjson message "$MESSAGE" \
+              --argjson committed_at "$COMMITTED_AT" \
+              '{commit_sha: $commit_sha, branch: $branch, author: $author, message: $message, committed_at: $committed_at}')"
+
+          echo "Changelog synced successfully."
