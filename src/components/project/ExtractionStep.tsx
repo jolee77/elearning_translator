@@ -24,8 +24,6 @@ import type { ChunkProgress } from '../../lib/chunkProgress'
 import type { Project } from '../../types'
 import type { Slide } from '../../types'
 
-const PAGE_SIZE = 20
-
 interface ExtractionStepProps {
   project: Project
   onStepComplete?: () => void
@@ -49,7 +47,6 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
 
   const [localSlides, setLocalSlides] = useState<Slide[]>([])
   const [autoExtractAttempted, setAutoExtractAttempted] = useState(false)
-  const [page, setPage] = useState(0)
   const [extractProgress, setExtractProgress] = useState<ParseProgress | null>(null)
   const [showFileUpload, setShowFileUpload] = useState(false)
   const [replacementFile, setReplacementFile] = useState<File | null>(null)
@@ -58,7 +55,6 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
     if (slides.length > 0) {
       startTransition(() => {
         setLocalSlides(slides)
-        setPage(0)
       })
     }
   }, [slides])
@@ -78,7 +74,6 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
       })
       startTransition(() => {
         setLocalSlides(result)
-        setPage(0)
       })
       showToast('PPTX 추출이 완료되었습니다.', 'success')
     } catch (err) {
@@ -87,20 +82,6 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
       setExtractProgress(null)
     }
   }, [extractSlides, project.id, project.source_pptx_url, showToast])
-
-  const totalPages = Math.max(1, Math.ceil(localSlides.length / PAGE_SIZE))
-
-  const pagedSlides = useMemo(() => {
-    const safePage = Math.min(page, totalPages - 1)
-    const start = safePage * PAGE_SIZE
-    return localSlides.slice(start, start + PAGE_SIZE)
-  }, [localSlides, page, totalPages])
-
-  useEffect(() => {
-    if (page >= totalPages) {
-      setPage(Math.max(0, totalPages - 1))
-    }
-  }, [page, totalPages])
 
   const missingNarrationSlides = useMemo(
     () => localSlides.filter((s) => !formatNarration(s.narration).trim()),
@@ -176,7 +157,6 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
       })
       startTransition(() => {
         setLocalSlides([])
-        setPage(0)
         setReplacementFile(null)
         setShowFileUpload(false)
         setAutoExtractAttempted(false)
@@ -392,7 +372,7 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                 </tr>
               </thead>
               <tbody>
-                {pagedSlides.map((slide) => {
+                {localSlides.map((slide) => {
                   const noNarration = !formatNarration(slide.narration).trim()
                   return (
                     <tr
@@ -447,32 +427,6 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
               </tbody>
             </table>
           </div>
-          {localSlides.length > PAGE_SIZE && (
-            <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
-              <p className="text-xs text-gray-500">
-                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, localSlides.length)} /{' '}
-                {localSlides.length}개 슬라이드
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="rounded border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                >
-                  이전
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                  className="rounded border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                >
-                  다음
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
