@@ -374,13 +374,13 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
       ) : (
         <div className="nb-card nb-h-scroll overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="nb-table table-fixed">
+            <table className="nb-table nb-extraction-table w-full">
               <colgroup>
-                <col style={{ width: '3rem' }} />
-                <col style={{ width: '4.5rem' }} />
-                <col style={{ width: '7ch' }} />
-                <col style={{ width: '34%' }} />
-                <col style={{ width: '51%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '9%' }} />
+                <col style={{ width: '7%' }} />
+                <col style={{ width: '31%' }} />
+                <col style={{ width: '45%' }} />
               </colgroup>
               <thead>
                 <tr>
@@ -415,8 +415,7 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                             updateLocalSlide(slide.id, 'screen_num', e.target.value)
                           }
                           maxLength={7}
-                          size={7}
-                          className="nb-input w-[7ch] max-w-[7ch] text-center text-xs"
+                          className="nb-input nb-extraction-input-screen-num text-center text-xs"
                         />
                       </td>
                       <td className="px-3 py-3">

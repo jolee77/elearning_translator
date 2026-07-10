@@ -191,6 +191,26 @@
   border-bottom-color: var(--nb-input-border);
 }
 
+/* Step 1 추출 테이블: 고정열 + 화면/나레이션 2:3 */
+.nb-extraction-table {
+  min-width: 880px;
+  table-layout: fixed;
+}
+
+.nb-extraction-table th {
+  white-space: normal;
+  word-break: keep-all;
+  line-height: 1.35;
+  font-size: 12px;
+  vertical-align: bottom;
+}
+
+.nb-extraction-table .nb-extraction-input-screen-num {
+  width: 100%;
+  max-width: 5.5rem;
+  box-sizing: border-box;
+}
+
 /* Badges */
 .nb-badge {
   display: inline-block;
