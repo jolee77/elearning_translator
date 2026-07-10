@@ -18,21 +18,40 @@ jobs:
           CATALOG_SYSTEM_ID: ${{ secrets.CATALOG_SYSTEM_ID }}
           CATALOG_TOKEN: ${{ secrets.CATALOG_TOKEN }}
         run: |
+          if [ -z "$CATALOG_API_URL" ] || [ -z "$CATALOG_SYSTEM_ID" ] || [ -z "$CATALOG_TOKEN" ]; then
+            echo "ERROR: Missing secrets. Set CATALOG_API_URL, CATALOG_SYSTEM_ID, CATALOG_TOKEN."
+            exit 1
+          fi
+
           COMMIT_SHA="${{ github.sha }}"
           BRANCH="${{ github.ref_name }}"
           AUTHOR="${{ github.actor }}"
-          MESSAGE=$(git log -1 --pretty=%B | jq -Rs .)
-          COMMITTED_AT=$(git log -1 --pretty=%cI | jq -Rs .)
+          MESSAGE=$(git log -1 --pretty=%B)
+          COMMITTED_AT=$(git log -1 --pretty=%cI)
 
-          curl -sf -X POST "${CATALOG_API_URL}/systems/${CATALOG_SYSTEM_ID}/changelog" \
+          PAYLOAD=$(jq -n \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg branch "$BRANCH" \
+            --arg author "$AUTHOR" \
+            --arg message "$MESSAGE" \
+            --arg committed_at "$COMMITTED_AT" \
+            '{commit_sha: $commit_sha, branch: $branch, author: $author, message: $message, committed_at: $committed_at}')
+
+          URL="${CATALOG_API_URL%/}/systems/${CATALOG_SYSTEM_ID}/changelog"
+          echo "POST $URL"
+
+          HTTP_CODE=$(curl -s -o /tmp/response.txt -w "%{http_code}" -X POST "$URL" \
             -H "Authorization: Bearer ${CATALOG_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg commit_sha "$COMMIT_SHA" \
-              --arg branch "$BRANCH" \
-              --arg author "$AUTHOR" \
-              --argjson message "$MESSAGE" \
-              --argjson committed_at "$COMMITTED_AT" \
-              '{commit_sha: $commit_sha, branch: $branch, author: $author, message: $message, committed_at: $committed_at}')"
+            -d "$PAYLOAD")
+
+          echo "Response:"
+          cat /tmp/response.txt
+          echo ""
+          echo "HTTP status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            exit 1
+          fi
 
           echo "Changelog synced successfully."
