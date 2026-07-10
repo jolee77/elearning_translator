@@ -23,6 +23,24 @@ jobs:
             exit 1
           fi
 
+          BASE_URL="${CATALOG_API_URL%/}"
+          CHANGELOG_URL="${BASE_URL}/systems/${CATALOG_SYSTEM_ID}/changelog"
+
+          echo "Waking up catalog (Render free tier may sleep)..."
+          for i in $(seq 1 12); do
+            WAKE_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "${BASE_URL}/health" || echo "000")
+            echo "Wake attempt $i: HTTP $WAKE_CODE"
+            if [ "$WAKE_CODE" = "200" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          if [ "$WAKE_CODE" != "200" ]; then
+            echo "ERROR: Catalog did not wake up in time"
+            exit 1
+          fi
+
           COMMIT_SHA="${{ github.sha }}"
           BRANCH="${{ github.ref_name }}"
           AUTHOR="${{ github.actor }}"
@@ -37,21 +55,25 @@ jobs:
             --arg committed_at "$COMMITTED_AT" \
             '{commit_sha: $commit_sha, branch: $branch, author: $author, message: $message, committed_at: $committed_at}')
 
-          URL="${CATALOG_API_URL%/}/systems/${CATALOG_SYSTEM_ID}/changelog"
-          echo "POST $URL"
+          echo "POST $CHANGELOG_URL"
 
-          HTTP_CODE=$(curl -s -o /tmp/response.txt -w "%{http_code}" -X POST "$URL" \
-            -H "Authorization: Bearer ${CATALOG_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD")
+          for i in $(seq 1 3); do
+            HTTP_CODE=$(curl -s -o /tmp/response.txt -w "%{http_code}" --max-time 90 -X POST "$CHANGELOG_URL" \
+              -H "Authorization: Bearer ${CATALOG_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" || echo "000")
 
-          echo "Response:"
-          cat /tmp/response.txt
-          echo ""
-          echo "HTTP status: $HTTP_CODE"
+            echo "Attempt $i - Response:"
+            cat /tmp/response.txt
+            echo ""
+            echo "HTTP status: $HTTP_CODE"
 
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            exit 1
-          fi
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "Changelog synced successfully."
+              exit 0
+            fi
 
-          echo "Changelog synced successfully."
+            sleep 15
+          done
+
+          exit 1
