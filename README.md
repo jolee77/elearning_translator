@@ -63,6 +63,18 @@ npm run build
 
 프로젝트 상세 스펙은 [CLAUDE.md](./CLAUDE.md)를 참고하세요.
 
+## 최근 수정 (2026-07-10)
+
+### PPTX 파서 v2 이식
+- **1~9장 가이드 강제 제외 폐지** — 화면번호·본문 패턴으로 intro/divider/lesson 등 분류
+- **레이아웃+슬라이드 병합**, 영역 겹침 50% 기준 분류
+- **슬라이드 마스터 텍스트 제외** — `이미지 번호`, `화면번호` 등 라벨이 나레이션/화면에 섞이지 않음
+- **나레이션 `SlideTextBox[]` 저장** — 화면텍스트와 동일 박스 크기·폰트, Step 1 `nb-textarea` UI
+- **싱크 마커 유지** — `#1`, `‹#›` 등 나레이션에서 보존
+- Edge Function `_shared/slides.ts`: `formatNarration` / `normalizeNarration` 반영
+
+> 기존 프로젝트는 Step 1 **「다시 추출」** 필요.
+
 ## 최근 수정 (2026-06-24)
 
 ### 버그 수정·운영
@@ -93,7 +105,7 @@ npm run build
 
 배포: [elearning-translator.vercel.app](https://elearning-translator.vercel.app)
 
-> **배포 정책:** `main`에 푸시하면 Vercel이 자동 배포한다. Supabase 마이그레이션·Edge Function 배포 후 `git push`한다.
+> **배포 정책:** `main` 푸시 → Vercel 자동 배포. Edge Function 변경 시 `npx supabase functions deploy spelling-check translate verify` 실행.
 
 ## 작업 예정
 

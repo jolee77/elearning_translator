@@ -106,46 +106,39 @@ uploaded → extracted → spelling → spelling_done → translating → transl
 ```
 
 ## PPTX 파싱 로직 (중요)
-실제 스토리보드 구조 기반 좌표값 (PLC 과정 실측):
 
-```typescript
-const SB_CX = 12192000  // 슬라이드 너비 EMU
-const SB_CY = 6858000   // 슬라이드 높이 EMU
+EMU: `SB_CX=12192000`, `SB_CY=6858000`.
 
-// 영역 판별 함수
-isScreenNum:   x/CX > 0.79 && y/CY < 0.12 && w/CX < 0.20  // 화면번호
-isCourseName:  x/CX > 0.10 && x/CX < 0.50 && y/CY >= 0.04 && y/CY < 0.08
-isChapterName: x/CX > 0.10 && x/CX < 0.35 && y/CY >= 0.08 && y/CY < 0.15
-isMenu:        박스 전체가 x/CX <= 0.25 (좌측 목차)
-isScreen:      중앙 화면 영역(13%~75%)과 박스가 겹침
-isScreenDesc:  x/CX >= 0.75 && y/CY < 0.63   // 우측 화면설명
-isImageNum:    x/CX >= 0.75 && y/CY >= 0.63 && y/CY < 0.78
-isNarration:   y/CY >= 0.78                   // 하단 나레이션 (또는 y 0.74~0.86 && x < 0.15)
-```
+### 텍스트 수집
+- **레이아웃 + 슬라이드** XML만 병합 (`getMergedShapesForSlide`)
+- **슬라이드 마스터** 텍스트(라벨·placeholder)는 추출·번역 **제외**
+- `grpSp` 중첩 그룹 좌표 변환, `<a:br/>` 줄바꿈 유지
 
-### 좌표 없는 플레이스홀더 나레이션 (슬라이드 19~28 등)
-일부 슬라이드는 나레이션 도형에 `<p:spPr/>`(xfrm 없음)만 있고 좌표가 비어 있다.
-- `extractShapes`: xfrm/off/ext가 없어도 텍스트가 있으면 `(0,0)` 좌표로 수집
-- 위치 기반 `isNarration` 실패 시 `findFallbackNarration`으로 보완
-  - `#1`로 시작, 40자 이상
-  - 연출 지시 문구(「텍스트·이미지 함께 제시」, 사운드 스트리밍 등)는 `isDirectorNote`로 제외
-  - 후보가 여러 개면 가장 긴 본문을 나레이션으로 선택
+### 영역 분류 (겹침 50% 기준, `classifyShapeRegion`)
+| 영역 | 대략적 범위 |
+|------|-------------|
+| screen | x 13%~75%, y 8%~78% |
+| desc | x 58%~100%, y 8%~63% |
+| narration 스크립트 | y 54%~74% |
+| narration 하단 | y 74%~100% |
+| image_num | x 58%~100%, y 63%~78% |
+| screen_num | x 60%~82%, y 0%~12% |
 
-### screen_text / narration 저장 형식
-DB 컬럼 `slides.screen_text`, `slides.narration`은 **text** 타입이며 JSON 문자열(`SlideTextBox[]`)로 저장된다.
-읽기/쓰기 시 `normalizeScreenText()` / `normalizeNarration()` 및 serialize 헬퍼 사용.
+화면번호: `buildScreenNum` (마스터 접두 + 슬라이드 접미 조합 가능, 단 마스터 **텍스트**는 병합 제외).
 
-슬라이드 마스터 텍스트(라벨·placeholder)는 추출·번역 대상에서 제외한다. 레이아웃+슬라이드만 병합한다.
+### screen_text / narration 저장
+- DB `slides.screen_text`, `slides.narration` → text 컬럼, JSON `SlideTextBox[]`
+- `normalizeScreenText` / `normalizeNarration`, `formatScreenText` / `formatNarration`
+- 나레이션 박스 w·h·font_size는 화면텍스트 박스 참조
+- **싱크 마커 유지**: `#1`, `‹#›` 등 나레이션에서 제거하지 않음
+- 화면텍스트만 `#N` 단독 박스 제외 (`isSyncMarkerOnly`)
 
-슬라이드 타입 분류 (슬라이드 번호가 아닌 화면번호·본문 패턴 기준):
-- intro: 1장 또는 화면번호 INTRO / xx_01 패턴
-- divider: 2~3장(총 5장 초과 시) 또는 본문에 '간지'
-- outro: OUTRO / 아웃트로
-- quiz: '문제풀기'
-- apply: '적용하기'
-- lesson: 화면번호 xx_xx 패턴
-- content: 나머지
-- guide: 레거시 타입 (자동 분류하지 않음, DB에 guide로 저장된 기존 데이터 호환용)
+### 슬라이드 타입 (번호가 아닌 패턴)
+intro / divider / outro / quiz / apply / lesson / content — ~~slideNum≤9 guide~~ **폐지**
+
+### 좌표 없는 플레이스홀더 나레이션
+- xfrm 없어도 `(0,0)` 수집 → `findFallbackNarrationShape` 보완
+- `isDirectorNote`로 연출 지시 제외
 
 ## VN PPTX 생성 로직 (중요)
 KO PPTX를 기반으로 번역 박스를 추가하는 방식.
