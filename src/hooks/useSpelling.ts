@@ -18,6 +18,7 @@ function normalizeSpellingResult(row: SpellingResult & { issues?: unknown }): Sp
   return {
     ...row,
     skipped: row.skipped ?? false,
+    committed_to_slide: row.committed_to_slide ?? false,
     issues: normalizeSpellingIssues(row.issues),
   }
 }
@@ -147,7 +148,7 @@ export function useRunSpellingCheck() {
   })
 }
 
-async function applySpellingResultToSlide(
+async function commitSpellingResultToSlide(
   result: SpellingResult,
   slide: Slide,
   projectId: string,
@@ -167,7 +168,7 @@ async function applySpellingResultToSlide(
 
   const { error: resultError } = await supabase
     .from('spelling_results')
-    .update({ applied: true, skipped: false })
+    .update({ committed_to_slide: true })
     .eq('id', result.id)
 
   if (resultError) throw resultError
@@ -185,63 +186,46 @@ async function applySpellingResultToSlide(
   }
 }
 
-export function useApplySpellingFix() {
-  const { user } = useAuth()
-  const queryClient = useQueryClient()
+async function revertSpellingResultFromSlide(
+  result: SpellingResult,
+  slide: Slide,
+  projectId: string,
+  userId: string | undefined,
+): Promise<void> {
+  const updates = applyFieldCorrection(slide, result.field, result.original)
+  if (Object.keys(updates).length === 0) {
+    throw new Error('해당 필드를 복원할 수 없습니다.')
+  }
 
-  return useMutation({
-    mutationFn: async ({
-      result,
-      slide,
-      projectId,
-    }: {
-      result: SpellingResult
-      slide: Slide
-      projectId: string
-    }): Promise<void> => {
-      await applySpellingResultToSlide(result, slide, projectId, user?.id)
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
-      queryClient.invalidateQueries({ queryKey: ['slides', variables.projectId] })
-    },
-  })
+  const { error: slideError } = await supabase
+    .from('slides')
+    .update(updates)
+    .eq('id', slide.id)
+
+  if (slideError) throw slideError
+
+  const { error: resultError } = await supabase
+    .from('spelling_results')
+    .update({ committed_to_slide: false, applied: false, skipped: false })
+    .eq('id', result.id)
+
+  if (resultError) throw resultError
+
+  if (userId) {
+    const { error: logError } = await supabase.from('change_logs').insert({
+      project_id: projectId,
+      user_id: userId,
+      action: 'spelling_reverted',
+      detail: `슬라이드 ${slide.slide_num} ${result.field} 맞춤법 적용 되돌림`,
+      metadata: { stage: 'spelling', spelling_result_id: result.id },
+    })
+
+    if (logError) throw logError
+  }
 }
 
-export function useBulkApplySpellingFix() {
-  const { user } = useAuth()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({
-      results,
-      slides,
-      projectId,
-    }: {
-      results: SpellingResult[]
-      slides: Slide[]
-      projectId: string
-    }): Promise<number> => {
-      const slideMap = new Map(slides.map((s) => [s.id, s]))
-      let applied = 0
-
-      for (const result of results) {
-        const slide = slideMap.get(result.slide_id)
-        if (!slide) continue
-        await applySpellingResultToSlide(result, slide, projectId, user?.id)
-        applied += 1
-      }
-
-      return applied
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
-      queryClient.invalidateQueries({ queryKey: ['slides', variables.projectId] })
-    },
-  })
-}
-
-export function useSkipSpellingFix() {
+/** 검토 단계: 수정안 수락 (슬라이드 미반영) */
+export function useApproveSpellingFix() {
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -256,13 +240,137 @@ export function useSkipSpellingFix() {
 
       const { error } = await supabase
         .from('spelling_results')
-        .update({ skipped: true })
+        .update({ applied: true, skipped: false, committed_to_slide: false })
         .in('id', resultIds)
 
       if (error) throw error
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
+    },
+  })
+}
+
+/** 검토 단계: 수정안 제외 (슬라이드 미반영) */
+export function useRejectSpellingFix() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      resultIds,
+      projectId: _projectId,
+    }: {
+      resultIds: string[]
+      projectId: string
+    }): Promise<void> => {
+      if (resultIds.length === 0) return
+
+      const { error } = await supabase
+        .from('spelling_results')
+        .update({ skipped: true, applied: false, committed_to_slide: false })
+        .in('id', resultIds)
+
+      if (error) throw error
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
+    },
+  })
+}
+
+/** 검토 결정 취소 (슬라이드 미반영 상태에서만) */
+export function useResetSpellingReview() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      resultIds,
+      projectId: _projectId,
+    }: {
+      resultIds: string[]
+      projectId: string
+    }): Promise<void> => {
+      if (resultIds.length === 0) return
+
+      const { error } = await supabase
+        .from('spelling_results')
+        .update({ applied: false, skipped: false, committed_to_slide: false })
+        .in('id', resultIds)
+
+      if (error) throw error
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
+    },
+  })
+}
+
+/** 변경 선택 항목을 슬라이드에 일괄 반영 */
+export function useCommitSpellingToSlides() {
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      results,
+      slides,
+      projectId,
+    }: {
+      results: SpellingResult[]
+      slides: Slide[]
+      projectId: string
+    }): Promise<number> => {
+      const slideMap = new Map(slides.map((s) => [s.id, s]))
+      let committed = 0
+
+      for (const result of results) {
+        if (!result.applied || result.skipped || result.committed_to_slide) continue
+        const slide = slideMap.get(result.slide_id)
+        if (!slide) continue
+        await commitSpellingResultToSlide(result, slide, projectId, user?.id)
+        committed += 1
+      }
+
+      return committed
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['slides', variables.projectId] })
+    },
+  })
+}
+
+/** 슬라이드 반영을 되돌리고 검토 상태 초기화 */
+export function useRevertSpellingCommit() {
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      results,
+      slides,
+      projectId,
+    }: {
+      results: SpellingResult[]
+      slides: Slide[]
+      projectId: string
+    }): Promise<number> => {
+      const slideMap = new Map(slides.map((s) => [s.id, s]))
+      let reverted = 0
+
+      for (const result of results) {
+        if (!result.committed_to_slide) continue
+        const slide = slideMap.get(result.slide_id)
+        if (!slide) continue
+        await revertSpellingResultFromSlide(result, slide, projectId, user?.id)
+        reverted += 1
+      }
+
+      return reverted
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['slides', variables.projectId] })
     },
   })
 }
@@ -304,12 +412,34 @@ export function hasSpellingChanges(result: SpellingResult): boolean {
   return hasSpellingTextChanges(result)
 }
 
-export { isSpellingPendingReview } from '../lib/spellingReview'
+export { isSpellingPendingReview, isSpellingApproved } from '../lib/spellingReview'
 
 export function isSpellingReviewSettled(results: SpellingResult[]): boolean {
   return results
     .filter(hasSpellingChanges)
     .every((result) => result.applied || result.skipped)
+}
+
+export function getApprovedSpellingResults(results: SpellingResult[]): SpellingResult[] {
+  return results.filter(
+    (result) => hasSpellingChanges(result) && result.applied && !result.skipped,
+  )
+}
+
+export function getUncommittedApprovedResults(results: SpellingResult[]): SpellingResult[] {
+  return getApprovedSpellingResults(results).filter((result) => !result.committed_to_slide)
+}
+
+export function getCommittedSpellingResults(results: SpellingResult[]): SpellingResult[] {
+  return results.filter((result) => result.committed_to_slide)
+}
+
+export function isSpellingFullyCommitted(results: SpellingResult[]): boolean {
+  return getApprovedSpellingResults(results).every((result) => result.committed_to_slide)
+}
+
+export function canCompleteSpellingReview(results: SpellingResult[]): boolean {
+  return isSpellingReviewSettled(results) && isSpellingFullyCommitted(results)
 }
 
 export function isSpellingCheckComplete(status: string): boolean {

@@ -4,7 +4,7 @@ import { isOnlyLineBreakWhitespaceDiff } from './textDiff'
 
 export type SpellableField = { field_key: string; text: string }
 
-export type SpellingItemStatus = 'pending' | 'no_change' | 'applied' | 'skipped'
+export type SpellingItemStatus = 'pending' | 'no_change' | 'approved' | 'rejected' | 'committed'
 
 export type SlideSpellingCoverage =
   | 'pending_review'
@@ -49,12 +49,22 @@ export function hasSpellingTextChanges(result: SpellingResult): boolean {
 }
 
 export function isSpellingPendingReview(result: SpellingResult): boolean {
-  return hasSpellingTextChanges(result) && !result.applied && !result.skipped
+  return (
+    hasSpellingTextChanges(result) &&
+    !result.applied &&
+    !result.skipped &&
+    !result.committed_to_slide
+  )
+}
+
+export function isSpellingApproved(result: SpellingResult): boolean {
+  return hasSpellingTextChanges(result) && result.applied && !result.skipped
 }
 
 export function getSpellingItemStatus(result: SpellingResult): SpellingItemStatus {
-  if (result.applied) return 'applied'
-  if (result.skipped) return 'skipped'
+  if (result.committed_to_slide) return 'committed'
+  if (result.applied) return 'approved'
+  if (result.skipped) return 'rejected'
   if (hasSpellingTextChanges(result)) return 'pending'
   return 'no_change'
 }
@@ -79,11 +89,14 @@ export function formatSpellingReviewReason(result: SpellingResult): string {
   if (status === 'no_change') {
     return '수정 불필요 — 맞춤법·띄어쓰기·문법상 문제가 발견되지 않았습니다.'
   }
-  if (status === 'applied') {
-    return '검토 완료 — 수정안을 슬라이드에 반영했습니다.'
+  if (status === 'committed') {
+    return '슬라이드 반영 완료 — 수정안이 추출 텍스트에 적용되었습니다.'
   }
-  if (status === 'skipped') {
-    return '검토 완료 — 수정안을 적용하지 않기로 했습니다.'
+  if (status === 'approved') {
+    return '변경 선택 — 번역 전 「슬라이드에 일괄 적용」으로 반영할 수 있습니다.'
+  }
+  if (status === 'rejected') {
+    return '제외 — 이 수정안은 슬라이드에 반영하지 않습니다.'
   }
 
   const issues = result.issues ?? []
@@ -140,7 +153,7 @@ export function slideCoverageReason(
     case 'all_clear':
       return '검사한 모든 필드에서 수정이 필요하지 않았습니다.'
     case 'reviewed':
-      return '제안된 수정안을 모두 검토했습니다 (적용 또는 적용 안 함).'
+      return '제안된 수정안을 모두 검토했습니다 (변경·제외).'
   }
 }
 
@@ -148,10 +161,12 @@ export function spellingItemBoxClass(status: SpellingItemStatus): string {
   switch (status) {
     case 'pending':
       return 'border-l-4 border-amber-500 bg-amber-50/90 ring-1 ring-amber-200/80'
-    case 'applied':
+    case 'approved':
       return 'border-l-4 border-emerald-500 bg-emerald-50/80'
-    case 'skipped':
+    case 'rejected':
       return 'border-l-4 border-gray-300 bg-gray-50'
+    case 'committed':
+      return 'border-l-4 border-indigo-500 bg-indigo-50/80'
     case 'no_change':
       return 'border-l-4 border-sky-200 bg-sky-50/40'
   }

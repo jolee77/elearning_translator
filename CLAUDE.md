@@ -60,7 +60,8 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 - `screen_text` (text — JSON 문자열), `screen_desc`, `image_nums` (`image_num` 아님), `narration`, `created_at`
 
 ### spelling_results
-- `id`, `project_id`, `slide_id`, `field`, `original`, `suggestion`, `applied`, `created_at`
+- `id`, `project_id`, `slide_id`, `field`, `original`, `suggestion`, `applied`, `skipped`, `committed_to_slide`, `issues`, `created_at`
+- `applied` = 검토 시 「변경」선택 (슬라이드 미반영), `skipped` = 「제외」, `committed_to_slide` = 슬라이드 일괄 반영 완료
 
 ### translations
 - `id`, `project_id`, `slide_id`, `field`, `source` (한국어), `vi_text`, `cpm`, `vi_wpm`, `created_at`, `updated_at`
@@ -95,7 +96,7 @@ uploaded → extracted → spelling → spelling_done → translating → transl
 /projects/new           새 프로젝트 생성
 /projects/:id           프로젝트 상세 (단계별 스텝)
   Step1: 추출 확인
-  Step2: 맞춤법 검사 결과 + 수정 적용
+  Step2: 맞춤법 검사 — 변경·제외 검토 후 슬라이드 일괄 적용·되돌리기
   Step3: 번역·역번역 검증 (통합)
   Step4: 전문가 검증 요청 (링크 생성) + 검토 현황 표
   Step5: 완료 → 다운로드
@@ -130,7 +131,7 @@ EMU: `SB_CX=12192000`, `SB_CY=6858000`.
 ### screen_text / narration 저장
 - DB `slides.screen_text`, `slides.narration` → text 컬럼, JSON `SlideTextBox[]`
 - `normalizeScreenText` / `normalizeNarration`, `formatScreenText` / `formatNarration`
-- 나레이션: 여러 도형 → 단일 박스, w = 화면텍스트 박스 × 1.5 (2:3 비율)
+- 나레이션: 스크립트 밴드(싱크 마커)와 하단 밴드가 동시에 잡히면 **단일 박스만 선택** (`selectPrimaryNarrationShape`), 줄 단위는 `#` 제거 후 중복 제거
 - **싱크 마커**: 나레이션 `#1` `#2` 유지, `‹#›`·`<#>`·단독 `#` 제외 (`isBareSyncMarker`)
 - 화면텍스트: `#N` 단독 박스·화면번호 패턴·게티/URL 메타데이터 제외
 

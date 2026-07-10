@@ -570,6 +570,58 @@ function isDirectorNote(text: string): boolean {
   return false
 }
 
+function narrationContentKey(text: string): string {
+  return text
+    .replace(/#\d+/g, '')
+    .replace(/성우\s*[:：]/gi, '')
+    .replace(/\s+/g, '')
+    .trim()
+}
+
+/** 나레이션 후보 점수 — 하단 밴드·싱크 마커·본문 길이 우선 */
+function narrationShapeScore(s: RawShape): number {
+  const cy = (s.y + Math.max(s.h, 1) / 2) / SB_CY
+  let score = 0
+  if (cy >= 0.74) score += 100
+  else if (cy >= 0.54) score += 40
+  if (/#\d/.test(s.text)) score += 50
+  score += Math.min(s.text.length / 50, 40)
+  return score
+}
+
+/**
+ * 스크립트 밴드(싱크 마커 포함)와 하단 밴드(동일 본문, 마커 없음)가
+ * 동시에 narration으로 분류되면 두 번 합쳐지는 문제를 막기 위해 단일 박스만 선택.
+ */
+function selectPrimaryNarrationShape(shapes: RawShape[]): RawShape | null {
+  const candidates = shapes.filter(
+    (s) =>
+      classifyShapeRegion(s.x, s.y, s.w, s.h) === 'narration' &&
+      !isNarrationUILayoutLabel(s) &&
+      !isNonTranslatableMetadata(s.text) &&
+      s.text.trim().length > 0,
+  )
+  if (candidates.length === 0) return null
+  if (candidates.length === 1) return candidates[0]
+
+  const sorted = [...candidates].sort((a, b) => narrationShapeScore(b) - narrationShapeScore(a))
+  const primary = sorted[0]
+  const primaryKey = narrationContentKey(primary.text)
+
+  const duplicates = sorted.filter((c) => {
+    if (c === primary) return false
+    const key = narrationContentKey(c.text)
+    if (!key || !primaryKey) return false
+    return key === primaryKey || primaryKey.includes(key) || key.includes(primaryKey)
+  })
+
+  if (duplicates.length === sorted.length - 1) {
+    return primary
+  }
+
+  return primary
+}
+
 function findFallbackNarrationShape(shapes: RawShape[]): RawShape | null {
   const candidates = shapes.filter(
     (s) =>
@@ -616,20 +668,17 @@ function collectNarrationBoxes(
       .map((line) => line.trim())
       .filter((line) => line && !isBareSyncMarker(line) && !isDirectorNote(line))
     for (const line of lines) {
-      if (isNonTranslatableMetadata(line) || seen.has(line)) continue
-      seen.add(line)
+      if (isNonTranslatableMetadata(line)) continue
+      const lineKey = narrationContentKey(line)
+      if (lineKey && seen.has(lineKey)) continue
+      if (lineKey) seen.add(lineKey)
       parts.push(line)
     }
   }
 
-  for (const s of shapes) {
-    if (
-      classifyShapeRegion(s.x, s.y, s.w, s.h) === 'narration' &&
-      !isNarrationUILayoutLabel(s) &&
-      !isNonTranslatableMetadata(s.text)
-    ) {
-      addText(s.text)
-    }
+  const primary = selectPrimaryNarrationShape(shapes)
+  if (primary) {
+    addText(primary.text)
   }
 
   if (parts.length === 0) {

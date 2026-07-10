@@ -113,6 +113,7 @@ export interface SpellingResult {
   suggestion: string
   applied: boolean
   skipped: boolean
+  committed_to_slide: boolean
   issues: SpellingIssue[]
   created_at: string
 }

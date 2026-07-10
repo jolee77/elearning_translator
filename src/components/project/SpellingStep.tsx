@@ -4,15 +4,22 @@ import { Spinner } from '../ui/Spinner'
 import { SuggestionHighlight } from '../ui/SuggestionHighlight'
 import { useToast } from '../../hooks/ToastProvider'
 import {
+  canCompleteSpellingReview,
+  getApprovedSpellingResults,
+  getCommittedSpellingResults,
+  getUncommittedApprovedResults,
   hasSpellingChanges,
+  isSpellingApproved,
   isSpellingCheckInterrupted,
   isSpellingPendingReview,
   isSpellingReviewSettled,
-  useApplySpellingFix,
-  useBulkApplySpellingFix,
+  useApproveSpellingFix,
+  useCommitSpellingToSlides,
   useCompleteSpellingReview,
+  useRejectSpellingFix,
+  useResetSpellingReview,
+  useRevertSpellingCommit,
   useRunSpellingCheck,
-  useSkipSpellingFix,
   useSpellingResults,
 } from '../../hooks/useSpelling'
 import { useSlides } from '../../hooks/useSlides'
@@ -41,8 +48,8 @@ type CheckPhase = 'idle' | 'running' | 'done' | 'error'
 
 const WORKFLOW_STEPS = [
   '추출 텍스트 AI 검사',
-  '수정안 검토·선택',
-  '선택 항목 슬라이드 반영',
+  '수정안 검토 (변경·제외)',
+  '슬라이드에 일괄 적용',
   '검토 완료 → 번역',
 ] as const
 
@@ -51,9 +58,11 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
   const { data: slides = [], isLoading: slidesLoading } = useSlides(project.id)
   const { data: results = [], isLoading: resultsLoading } = useSpellingResults(project.id)
   const runSpelling = useRunSpellingCheck()
-  const applyFix = useApplySpellingFix()
-  const bulkApply = useBulkApplySpellingFix()
-  const skipFix = useSkipSpellingFix()
+  const approveFix = useApproveSpellingFix()
+  const rejectFix = useRejectSpellingFix()
+  const resetReview = useResetSpellingReview()
+  const commitToSlides = useCommitSpellingToSlides()
+  const revertCommit = useRevertSpellingCommit()
   const completeReview = useCompleteSpellingReview()
 
   const [chunkProgress, setChunkProgress] = useState<ChunkProgress | null>(null)
@@ -66,8 +75,6 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
     () => slides.filter((s) => s.slide_type !== 'guide'),
     [slides],
   )
-
-  const slideMap = useMemo(() => new Map(slides.map((s) => [s.id, s])), [slides])
 
   const spellableSlideCount = useMemo(
     () => eligibleSlides.filter((s) => buildSpellableFields(s).length > 0).length,
@@ -104,11 +111,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
         const slideResults = resultsBySlide.get(slide.id) ?? []
         const spellable = buildSpellableFields(slide)
         let coverage = getSlideSpellingCoverage(slide, slideResults, checked)
-        if (
-          checked &&
-          spellable.length > 0 &&
-          slideResults.length === 0
-        ) {
+        if (checked && spellable.length > 0 && slideResults.length === 0) {
           coverage = 'not_checked'
         }
         return { slide, slideResults, spellable, coverage }
@@ -141,6 +144,21 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
     [results],
   )
 
+  const uncommittedApproved = useMemo(
+    () => getUncommittedApprovedResults(results),
+    [results],
+  )
+
+  const committedResults = useMemo(
+    () => getCommittedSpellingResults(results),
+    [results],
+  )
+
+  const approvedResults = useMemo(
+    () => getApprovedSpellingResults(results),
+    [results],
+  )
+
   const checkCompleted =
     project.status === 'spelling_done' ||
     checkPhase === 'done' ||
@@ -152,28 +170,32 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
     results.length === 0
 
   const reviewSettled = isSpellingReviewSettled(results)
+  const fullyCommitted = canCompleteSpellingReview(results)
   const canCompleteReview =
-    checkCompleted && reviewSettled && checkPhase !== 'running'
+    checkCompleted && fullyCommitted && checkPhase !== 'running'
 
   const isRunning = checkPhase === 'running'
 
   const activeWorkflowStep = useMemo(() => {
     if (!checkCompleted) return 0
     if (!reviewSettled) return 1
-    if (pendingReview.length > 0) return 2
+    if (uncommittedApproved.length > 0) return 2
     return 3
-  }, [checkCompleted, reviewSettled, pendingReview.length])
+  }, [checkCompleted, reviewSettled, uncommittedApproved.length])
 
   useEffect(() => {
     setSelectedIds((prev) => {
-      const pendingIds = new Set(pendingReview.map((r) => r.id))
+      const selectableIds = new Set([
+        ...pendingReview.map((r) => r.id),
+        ...uncommittedApproved.map((r) => r.id),
+      ])
       const next = new Set<string>()
       for (const id of prev) {
-        if (pendingIds.has(id)) next.add(id)
+        if (selectableIds.has(id)) next.add(id)
       }
       return next
     })
-  }, [pendingReview])
+  }, [pendingReview, uncommittedApproved])
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -220,75 +242,126 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
     }
   }
 
-  const handleBulkApply = async () => {
+  const handleBulkApprove = async () => {
     const targets = pendingReview.filter((r) => selectedIds.has(r.id))
     if (targets.length === 0) {
-      showToast('슬라이드에 적용할 항목을 선택해 주세요.', 'error')
+      showToast('변경할 항목을 선택해 주세요.', 'error')
       return
     }
 
     try {
-      const count = await bulkApply.mutateAsync({
-        results: targets,
-        slides,
-        projectId: project.id,
-      })
-      setSelectedIds(new Set())
-      showToast(`${count}건이 슬라이드에 반영되었습니다.`, 'success')
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : '적용에 실패했습니다.', 'error')
-    }
-  }
-
-  const handleBulkSkip = async () => {
-    const targets = pendingReview.filter((r) => selectedIds.has(r.id))
-    if (targets.length === 0) {
-      showToast('적용 안 함으로 표시할 항목을 선택해 주세요.', 'error')
-      return
-    }
-
-    try {
-      await skipFix.mutateAsync({
+      await approveFix.mutateAsync({
         resultIds: targets.map((r) => r.id),
         projectId: project.id,
       })
       setSelectedIds(new Set())
-      showToast(`${targets.length}건을 적용 안 함으로 처리했습니다.`, 'success')
+      showToast(`${targets.length}건을 변경으로 선택했습니다.`, 'success')
     } catch (err) {
       showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
     }
   }
 
-  const handleSkipOne = async (result: SpellingResult) => {
-    try {
-      await skipFix.mutateAsync({
-        resultIds: [result.id],
-        projectId: project.id,
-      })
-      showToast('적용 안 함으로 표시했습니다.', 'success')
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
-    }
-  }
-
-  const handleApplyOne = async (result: SpellingResult) => {
-    const slide = slideMap.get(result.slide_id)
-    if (!slide) {
-      showToast('슬라이드를 찾을 수 없습니다.', 'error')
+  const handleBulkReject = async () => {
+    const targets = pendingReview.filter((r) => selectedIds.has(r.id))
+    if (targets.length === 0) {
+      showToast('제외할 항목을 선택해 주세요.', 'error')
       return
     }
 
     try {
-      await applyFix.mutateAsync({ result, slide, projectId: project.id })
-      showToast('슬라이드에 반영되었습니다.', 'success')
+      await rejectFix.mutateAsync({
+        resultIds: targets.map((r) => r.id),
+        projectId: project.id,
+      })
+      setSelectedIds(new Set())
+      showToast(`${targets.length}건을 제외했습니다.`, 'success')
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '적용에 실패했습니다.', 'error')
+      showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
+    }
+  }
+
+  const handleApproveOne = async (result: SpellingResult) => {
+    try {
+      await approveFix.mutateAsync({
+        resultIds: [result.id],
+        projectId: project.id,
+      })
+      showToast('변경으로 선택했습니다.', 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
+    }
+  }
+
+  const handleRejectOne = async (result: SpellingResult) => {
+    try {
+      await rejectFix.mutateAsync({
+        resultIds: [result.id],
+        projectId: project.id,
+      })
+      showToast('제외했습니다.', 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
+    }
+  }
+
+  const handleResetOne = async (result: SpellingResult) => {
+    try {
+      await resetReview.mutateAsync({
+        resultIds: [result.id],
+        projectId: project.id,
+      })
+      showToast('검토 선택을 취소했습니다.', 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
+    }
+  }
+
+  const handleCommitAll = async () => {
+    if (uncommittedApproved.length === 0) {
+      showToast('슬라이드에 반영할 변경 항목이 없습니다.', 'error')
+      return
+    }
+
+    try {
+      const count = await commitToSlides.mutateAsync({
+        results: uncommittedApproved,
+        slides,
+        projectId: project.id,
+      })
+      showToast(`${count}건이 슬라이드에 반영되었습니다.`, 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '슬라이드 반영에 실패했습니다.', 'error')
+    }
+  }
+
+  const handleRevertAll = async () => {
+    if (committedResults.length === 0) {
+      showToast('되돌릴 반영 항목이 없습니다.', 'error')
+      return
+    }
+
+    try {
+      const count = await revertCommit.mutateAsync({
+        results: committedResults,
+        slides,
+        projectId: project.id,
+      })
+      showToast(`${count}건의 슬라이드 반영을 되돌렸습니다.`, 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '되돌리기에 실패했습니다.', 'error')
     }
   }
 
   const handleComplete = async () => {
     if (!reviewSettled) {
-      showToast('아직 검토하지 않은 수정안이 있습니다. 적용 또는 적용 안 함을 선택해 주세요.', 'error')
+      showToast('아직 검토하지 않은 수정안이 있습니다. 변경 또는 제외를 선택해 주세요.', 'error')
+      return
+    }
+    if (!fullyCommitted) {
+      showToast(
+        '변경으로 선택한 항목을 슬라이드에 일괄 적용한 뒤 진행해 주세요.',
+        'error',
+      )
       return
     }
 
@@ -304,9 +377,11 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
   const isBusy =
     isRunning ||
     runSpelling.isPending ||
-    applyFix.isPending ||
-    bulkApply.isPending ||
-    skipFix.isPending ||
+    approveFix.isPending ||
+    rejectFix.isPending ||
+    resetReview.isPending ||
+    commitToSlides.isPending ||
+    revertCommit.isPending ||
     completeReview.isPending
 
   const renderMainContent = () => {
@@ -368,20 +443,50 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
               </button>
               <button
                 type="button"
-                onClick={handleBulkApply}
+                onClick={handleBulkApprove}
                 disabled={isBusy || selectedIds.size === 0}
                 className="nb-btn-primary text-xs"
               >
-                선택 항목 슬라이드에 적용 ({selectedIds.size})
+                선택 항목 변경 ({selectedIds.size})
               </button>
               <button
                 type="button"
-                onClick={handleBulkSkip}
+                onClick={handleBulkReject}
                 disabled={isBusy || selectedIds.size === 0}
                 className="nb-btn-secondary text-xs"
               >
-                선택 항목 적용 안 함
+                선택 항목 제외
               </button>
+            </div>
+          )}
+
+          {reviewSettled && approvedResults.length > 0 && (
+            <div className="nb-summary-bar">
+              <span className="text-xs text-gray-600">
+                변경 선택 {approvedResults.length}건
+                {uncommittedApproved.length > 0 && ` · 미반영 ${uncommittedApproved.length}건`}
+                {committedResults.length > 0 && ` · 반영됨 ${committedResults.length}건`}
+              </span>
+              {uncommittedApproved.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleCommitAll}
+                  disabled={isBusy}
+                  className="nb-btn-primary text-xs"
+                >
+                  슬라이드에 일괄 적용 ({uncommittedApproved.length})
+                </button>
+              )}
+              {committedResults.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRevertAll}
+                  disabled={isBusy}
+                  className="nb-btn-secondary text-xs"
+                >
+                  슬라이드 적용 되돌리기 ({committedResults.length})
+                </button>
+              )}
             </div>
           )}
 
@@ -422,6 +527,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                   {slideResults.map((result) => {
                     const itemStatus = getSpellingItemStatus(result)
                     const pending = isSpellingPendingReview(result)
+                    const approved = isSpellingApproved(result)
                     const hasChange = hasSpellingChanges(result)
                     const checked = selectedIds.has(result.id)
 
@@ -440,7 +546,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                                 disabled={isBusy}
                                 className="rounded border-amber-400 text-amber-600 focus:ring-amber-300"
                               />
-                              슬라이드에 적용
+                              선택
                             </label>
                           )}
                           <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200">
@@ -451,11 +557,14 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                               검토 필요
                             </span>
                           )}
-                          {result.applied && (
-                            <span className="text-xs font-medium text-emerald-700">슬라이드 반영됨</span>
+                          {itemStatus === 'approved' && (
+                            <span className="text-xs font-medium text-emerald-700">변경 선택</span>
                           )}
-                          {result.skipped && !result.applied && (
-                            <span className="text-xs font-medium text-gray-500">적용 안 함</span>
+                          {itemStatus === 'rejected' && (
+                            <span className="text-xs font-medium text-gray-500">제외</span>
+                          )}
+                          {itemStatus === 'committed' && (
+                            <span className="text-xs font-medium text-indigo-700">슬라이드 반영됨</span>
                           )}
                           {itemStatus === 'no_change' && (
                             <span className="text-xs font-medium text-sky-700">이상 없음</span>
@@ -503,19 +612,32 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                           <div className="mt-2 flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => handleApplyOne(result)}
+                              onClick={() => handleApproveOne(result)}
                               disabled={isBusy}
-                              className="rounded-lg border border-amber-500 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                              className="rounded-lg border border-emerald-500 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
                             >
-                              이 항목만 슬라이드에 적용
+                              변경
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleSkipOne(result)}
+                              onClick={() => handleRejectOne(result)}
                               disabled={isBusy}
                               className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                             >
-                              적용 안 함
+                              제외
+                            </button>
+                          </div>
+                        )}
+
+                        {(approved || itemStatus === 'rejected') && !result.committed_to_slide && (
+                          <div className="mt-2">
+                            <button
+                              type="button"
+                              onClick={() => handleResetOne(result)}
+                              disabled={isBusy}
+                              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              검토 선택 취소
                             </button>
                           </div>
                         )}
@@ -557,7 +679,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       <div className="nb-empty-state">
         <p className="text-sm text-gray-500">추출된 텍스트에 대해 AI 맞춤법 검사를 실행하세요.</p>
         <p className="mt-1 text-xs text-gray-400">
-          검사 결과는 먼저 검토·선택한 뒤, 승인한 항목만 슬라이드에 반영됩니다.
+          검사 후 변경·제외로 검토하고, 번역 전에 승인한 항목만 슬라이드에 일괄 적용합니다.
         </p>
       </div>
     )
@@ -569,7 +691,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
         <div>
           <h3 className="nb-step-title">Step 2. 맞춤법 검사</h3>
           <p className="nb-step-desc">
-            추출 텍스트를 AI로 검사하고, 설계자가 선택한 수정안만 슬라이드에 반영합니다.
+            추출 텍스트를 AI로 검사하고, 변경·제외로 검토한 뒤 번역 전에 슬라이드에 일괄 반영합니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -638,13 +760,19 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
 
       {checkCompleted && pendingReview.length > 0 && (
         <div className="nb-alert nb-alert--warning">
-          검토 대기 {pendingReview.length}건 — 체크 후 「슬라이드에 적용」 또는 「적용 안 함」을 선택하세요.
+          검토 대기 {pendingReview.length}건 — 각 항목을 「변경」 또는 「제외」로 선택하세요.
         </div>
       )}
 
-      {checkCompleted && reviewSettled && pendingReview.length === 0 && results.length > 0 && (
+      {checkCompleted && reviewSettled && uncommittedApproved.length > 0 && (
+        <div className="nb-alert nb-alert--warning">
+          변경 선택 {uncommittedApproved.length}건 — 번역 전 「슬라이드에 일괄 적용」을 실행하세요.
+        </div>
+      )}
+
+      {checkCompleted && fullyCommitted && results.length > 0 && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          모든 수정안 검토가 끝났습니다. 「검토 완료 → 번역」으로 다음 단계로 진행하세요.
+          검토와 슬라이드 반영이 완료되었습니다. 「검토 완료 → 번역」으로 다음 단계로 진행하세요.
         </div>
       )}
 
