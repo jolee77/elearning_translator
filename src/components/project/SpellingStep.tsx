@@ -475,9 +475,14 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                         <div className={hasChange ? 'grid gap-3 md:grid-cols-2' : ''}>
                           <div>
                             <p className="text-xs font-medium text-gray-500">원문 (추출 텍스트)</p>
-                            <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
-                              {result.original}
-                            </p>
+                            <div className="mt-1">
+                              <SuggestionHighlight
+                                original={result.original}
+                                suggestion={result.suggestion}
+                                issues={result.issues}
+                                mode="original"
+                              />
+                            </div>
                           </div>
                           {hasChange && (
                             <div>
@@ -486,6 +491,8 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                                 <SuggestionHighlight
                                   original={result.original}
                                   suggestion={result.suggestion}
+                                  issues={result.issues}
+                                  mode="suggestion"
                                 />
                               </div>
                             </div>

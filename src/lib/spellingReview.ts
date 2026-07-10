@@ -1,5 +1,6 @@
 import type { Slide, SpellingIssue, SpellingResult } from '../types'
 import { formatNarration, formatScreenText, normalizeScreenText } from './pptxParser'
+import { isOnlyLineBreakWhitespaceDiff } from './textDiff'
 
 export type SpellableField = { field_key: string; text: string }
 
@@ -43,6 +44,7 @@ export function buildSpellableFields(slide: Slide): SpellableField[] {
 }
 
 export function hasSpellingTextChanges(result: SpellingResult): boolean {
+  if (isOnlyLineBreakWhitespaceDiff(result.original, result.suggestion)) return false
   return result.original.trim() !== result.suggestion.trim()
 }
 
