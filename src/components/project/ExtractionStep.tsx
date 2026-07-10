@@ -14,7 +14,9 @@ import {
   useSlides,
   type ParseProgress,
 } from '../../hooks/useSlides'
+import { useReplaceProjectPptx } from '../../hooks/useProject'
 import { useToast } from '../../hooks/ToastProvider'
+import { PptxFileDropzone } from './PptxFileDropzone'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { ChunkProgressPanel } from '../ui/ChunkProgressPanel'
 import { Spinner } from '../ui/Spinner'
@@ -54,12 +56,15 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
   const extractSlides = useExtractSlides()
   const bulkUpdate = useBulkUpdateSlides()
   const completeExtraction = useCompleteExtraction()
+  const replacePptx = useReplaceProjectPptx()
 
   const [localSlides, setLocalSlides] = useState<Slide[]>([])
   const [typeFilter, setTypeFilter] = useState<SlideType | 'all'>('all')
   const [autoExtractAttempted, setAutoExtractAttempted] = useState(false)
   const [page, setPage] = useState(0)
   const [extractProgress, setExtractProgress] = useState<ParseProgress | null>(null)
+  const [showFileUpload, setShowFileUpload] = useState(false)
+  const [replacementFile, setReplacementFile] = useState<File | null>(null)
 
   useEffect(() => {
     if (slides.length > 0) {
@@ -94,26 +99,6 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
       setExtractProgress(null)
     }
   }, [extractSlides, project.id, project.source_pptx_url, showToast])
-
-  useEffect(() => {
-    if (
-      !slidesLoading &&
-      slides.length === 0 &&
-      !autoExtractAttempted &&
-      !extractSlides.isPending &&
-      project.source_pptx_url
-    ) {
-      setAutoExtractAttempted(true)
-      runExtraction()
-    }
-  }, [
-    slidesLoading,
-    slides.length,
-    autoExtractAttempted,
-    extractSlides.isPending,
-    project.source_pptx_url,
-    runExtraction,
-  ])
 
   const filteredSlides = useMemo(() => {
     if (typeFilter === 'all') return localSlides
@@ -189,6 +174,40 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
     downloadExtractionXlsx(localSlides, `${safeTitle}_추출결과.xlsx`)
   }
 
+  const handleReplacePptx = async () => {
+    if (!replacementFile) {
+      showToast('변경할 PPTX 파일을 선택해 주세요.', 'error')
+      return
+    }
+
+    const hasWorkflowData = project.status !== 'uploaded'
+    if (
+      hasWorkflowData &&
+      !window.confirm(
+        'PPTX 파일을 변경하면 추출·번역·검증 데이터가 모두 삭제되고 처음부터 다시 시작합니다. 계속하시겠습니까?',
+      )
+    ) {
+      return
+    }
+
+    try {
+      await replacePptx.mutateAsync({
+        projectId: project.id,
+        pptxFile: replacementFile,
+      })
+      startTransition(() => {
+        setLocalSlides([])
+        setPage(0)
+        setReplacementFile(null)
+        setShowFileUpload(false)
+        setAutoExtractAttempted(false)
+      })
+      showToast('PPTX 파일이 변경되었습니다. 새 파일로 추출을 시작합니다.', 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'PPTX 파일 변경에 실패했습니다.', 'error')
+    }
+  }
+
   const isExtracting = extractSlides.isPending
 
   const extractChunkProgress: ChunkProgress | null = extractProgress
@@ -200,11 +219,94 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
         percent: Math.round((extractProgress.current / Math.max(extractProgress.total, 1)) * 100),
       }
     : null
-  const isBusy = isExtracting || bulkUpdate.isPending || completeExtraction.isPending
+  const isBusy = isExtracting || bulkUpdate.isPending || completeExtraction.isPending || replacePptx.isPending
   const isExtracted = project.status !== 'uploaded'
+
+  useEffect(() => {
+    if (
+      !autoExtractAttempted &&
+      !extractSlides.isPending &&
+      !replacePptx.isPending &&
+      project.source_pptx_url &&
+      localSlides.length === 0 &&
+      !slidesLoading
+    ) {
+      setAutoExtractAttempted(true)
+      runExtraction()
+    }
+  }, [
+    autoExtractAttempted,
+    extractSlides.isPending,
+    replacePptx.isPending,
+    project.source_pptx_url,
+    localSlides.length,
+    slidesLoading,
+    runExtraction,
+  ])
 
   return (
     <div className="space-y-4">
+      <div className="nb-card p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-900">PPTX 파일</h4>
+            <p className="mt-1 text-sm text-gray-600">
+              {project.source_pptx_name ?? '업로드된 파일 없음'}
+            </p>
+          </div>
+          {!showFileUpload && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowFileUpload(true)
+                setReplacementFile(null)
+              }}
+              disabled={isBusy}
+              className="nb-btn-secondary"
+            >
+              파일 변경
+            </button>
+          )}
+        </div>
+
+        {showFileUpload && (
+          <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
+            <p className="text-sm text-gray-500">
+              새 PPTX 파일을 선택하면 기존 추출 결과가 삭제되고 다시 추출합니다.
+            </p>
+            <PptxFileDropzone
+              file={replacementFile}
+              onFileSelect={setReplacementFile}
+              onClear={() => setReplacementFile(null)}
+              disabled={isBusy}
+              currentFileName={project.source_pptx_name}
+            />
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowFileUpload(false)
+                  setReplacementFile(null)
+                }}
+                disabled={isBusy}
+                className="nb-btn-secondary"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleReplacePptx}
+                disabled={isBusy || !replacementFile}
+                className="nb-btn-primary"
+              >
+                {replacePptx.isPending && <Spinner className="text-white" />}
+                {replacePptx.isPending ? '업로드 중...' : '파일 적용 및 다시 추출'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="nb-page-toolbar">
         <div>
           <h3 className="nb-step-title">Step 1. 추출 확인</h3>

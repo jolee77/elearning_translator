@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, type DragEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { PptxFileDropzone, isPptxFile } from '../components/project/PptxFileDropzone'
 import { Spinner } from '../components/ui/Spinner'
 import { useToast } from '../hooks/ToastProvider'
 import { useSettings } from '../hooks/useAdmin'
@@ -13,13 +14,6 @@ const TARGET_LANGUAGES = [
   { code: 'id', name: '인도네시아어' },
 ] as const
 
-function isPptxFile(file: File): boolean {
-  return (
-    file.name.toLowerCase().endsWith('.pptx') ||
-    file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-  )
-}
-
 export function NewProjectPage() {
   const navigate = useNavigate()
   const { showToast } = useToast()
@@ -30,7 +24,6 @@ export function NewProjectPage() {
   const [episodeName, setEpisodeName] = useState('')
   const [targetLang, setTargetLang] = useState('vi')
   const [pptxFile, setPptxFile] = useState<File | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
 
   useEffect(() => {
     if (settings?.default_target_lang) {
@@ -47,16 +40,6 @@ export function NewProjectPage() {
       setPptxFile(file)
     },
     [showToast],
-  )
-
-  const handleDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
-      e.preventDefault()
-      setIsDragging(false)
-      const file = e.dataTransfer.files[0]
-      if (file) handleFile(file)
-    },
-    [handleFile],
   )
 
   const handleSubmit = async (e: FormEvent) => {
@@ -80,12 +63,6 @@ export function NewProjectPage() {
       showToast(err instanceof Error ? err.message : '프로젝트 생성에 실패했습니다.', 'error')
     }
   }
-
-  const dropzoneClass = isDragging
-    ? 'nb-dropzone nb-dropzone--active'
-    : pptxFile
-      ? 'nb-dropzone nb-dropzone--ready'
-      : 'nb-dropzone'
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -158,76 +135,12 @@ export function NewProjectPage() {
         <div className="nb-card p-6">
           <h3 className="nb-step-title mb-4">PPTX 파일</h3>
 
-          <div
-            onDragOver={(e) => {
-              e.preventDefault()
-              setIsDragging(true)
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-            className={dropzoneClass}
-          >
-            {pptxFile ? (
-              <>
-                <svg
-                  className="h-10 w-10 text-emerald-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                <p className="mt-3 text-sm font-medium text-gray-900">{pptxFile.name}</p>
-                <p className="mt-1 text-xs text-gray-500">
-                  {(pptxFile.size / 1024 / 1024).toFixed(2)} MB
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setPptxFile(null)}
-                  className="mt-3 text-xs text-gray-500 hover:text-red-600"
-                >
-                  파일 제거
-                </button>
-              </>
-            ) : (
-              <>
-                <svg
-                  className="h-10 w-10 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-                <p className="mt-3 text-sm font-medium text-gray-700">
-                  PPTX 파일을 여기에 드래그하세요
-                </p>
-                <p className="mt-1 text-xs text-gray-500">또는</p>
-                <label className="nb-btn-secondary mt-3 cursor-pointer">
-                  파일 선택
-                  <input
-                    type="file"
-                    accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) handleFile(file)
-                    }}
-                  />
-                </label>
-              </>
-            )}
-          </div>
+          <PptxFileDropzone
+            file={pptxFile}
+            onFileSelect={handleFile}
+            onClear={() => setPptxFile(null)}
+            disabled={createProject.isPending}
+          />
         </div>
 
         {createProject.isPending && (
