@@ -69,13 +69,21 @@ npm run build
 - **1~9장 가이드 강제 제외 폐지** — 화면번호·본문 패턴으로 intro/divider/lesson 등 분류
 - **레이아웃+슬라이드 병합**, 영역 겹침 **51%** 기준 분류
 - **마스터는 화면번호만** — 상단 `01-00` 등은 `screen_num`, 과정명·목차·화면설명·이미지번호는 제외
-- **나레이션 단일 박스** — 여러 도형을 한 textarea로 합침, 박스 너비 = 화면텍스트 × 1.5 (UI 열 2:3)
+- **나레이션 단일 박스** — 스크립트 밴드(싱크 마커)와 하단 밴드가 동시에 잡히면 **단일 박스만 선택** (`selectPrimaryNarrationShape`), 줄 단위 `#` 제거 후 중복 제거
 - **싱크 마커** — `#1`, `#2` 등 숫자 포함만 유지, `‹#›`·`<#>`·단독 `#` 제외
 - **메타데이터 제외** — 게티/Getty 이미지번호, URL 등 비번역 텍스트 필터
 - Step 1 UI: 화면텍스트·나레이션 열 너비 **2:3**
 - Edge Function `_shared/slides.ts`: `formatNarration` / `normalizeNarration` 반영
 
 > 기존 프로젝트는 Step 1 **「다시 추출」** 필요.
+
+### 맞춤법 검사 워크플로우 (Step 2)
+1. AI 검사 — 추출 텍스트만 검사, 슬라이드는 변경하지 않음
+2. **변경** / **제외** — `spelling_results.applied` / `skipped`만 갱신
+3. **슬라이드에 일괄 적용** / **적용 되돌리기** — `committed_to_slide`로 반영·복원 (`original` 기준)
+4. **검토 완료 → 번역** — 변경 항목이 모두 슬라이드에 반영된 뒤 진행
+
+DB 마이그레이션: `supabase/migrations/20250710100000_spelling_committed.sql` (`committed_to_slide` 컬럼)
 
 ## 최근 수정 (2026-06-24)
 

@@ -227,6 +227,14 @@ const KO_CPM = 320
 - nextBMS 스타일 유틸 클래스(`nb-*`) — `src/index.css`, `Layout.tsx`
 - Tailwind 설정: `tailwind.config.js` + `src/index.css`
 
+## 구현 현황 (2026-07-10)
+
+### 완료 (커밋·배포)
+- [x] 나레이션 중복 추출 수정 — `selectPrimaryNarrationShape`, 줄 단위 정규화 dedupe
+- [x] 맞춤법 Step 2: 변경·제외 검토 → 슬라이드 일괄 적용·되돌리기 (`committed_to_slide`)
+- [x] 맞춤법 검사 완료는 사용자 「검토 완료」 시에만 `spelling_done`
+- [x] DB 마이그레이션: `20250710100000_spelling_committed.sql`
+
 ## 구현 현황 (2026-06-24)
 
 ### 오늘 추가 완료 (저녁)
