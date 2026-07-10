@@ -415,14 +415,21 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
       ) : (
         <div className="nb-card nb-h-scroll overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="nb-table">
+            <table className="nb-table table-fixed">
+              <colgroup>
+                <col style={{ width: '3rem' }} />
+                <col style={{ width: '4.5rem' }} />
+                <col style={{ width: '7ch' }} />
+                <col style={{ width: '34%' }} />
+                <col style={{ width: '51%' }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>슬라이드번호</th>
                   <th>유형</th>
-                  <th>화면번호</th>
-                  <th className="w-[22%] min-w-[180px]">화면텍스트</th>
-                  <th className="w-[33%] min-w-[280px]">나레이션</th>
+                  <th className="px-2">화면번호</th>
+                  <th>화면텍스트</th>
+                  <th>나레이션</th>
                 </tr>
               </thead>
               <tbody>
@@ -433,25 +440,27 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                       key={slide.id}
                       className={noNarration ? 'bg-amber-50/50' : 'hover:bg-gray-50/50'}
                     >
-                      <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900">
+                      <td className="whitespace-nowrap px-2 py-3 font-medium text-gray-900">
                         {slide.slide_num}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3">
+                      <td className="whitespace-nowrap px-2 py-3">
                         <span className="nb-badge">
                           {SLIDE_TYPE_LABELS[slide.slide_type]}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-2 py-3">
                         <input
                           type="text"
                           value={slide.screen_num ?? ''}
                           onChange={(e) =>
                             updateLocalSlide(slide.id, 'screen_num', e.target.value)
                           }
-                          className="nb-input w-full min-w-[80px] text-xs"
+                          maxLength={7}
+                          size={7}
+                          className="nb-input w-[7ch] max-w-[7ch] text-center text-xs"
                         />
                       </td>
-                      <td className="w-[22%] px-4 py-3">
+                      <td className="px-3 py-3">
                         <textarea
                           value={formatScreenText(slide.screen_text)}
                           onChange={(e) =>
@@ -461,7 +470,7 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                           className="nb-textarea w-full text-xs"
                         />
                       </td>
-                      <td className="w-[33%] px-4 py-3">
+                      <td className="px-3 py-3">
                         <textarea
                           value={formatNarration(slide.narration)}
                           onChange={(e) =>
