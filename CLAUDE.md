@@ -114,24 +114,25 @@ EMU: `SB_CX=12192000`, `SB_CY=6858000`.
 - **슬라이드 마스터** 텍스트(라벨·placeholder)는 추출·번역 **제외**
 - `grpSp` 중첩 그룹 좌표 변환, `<a:br/>` 줄바꿈 유지
 
-### 영역 분류 (겹침 50% 기준, `classifyShapeRegion`)
-| 영역 | 대략적 범위 |
-|------|-------------|
-| screen | x 13%~75%, y 8%~78% |
-| desc | x 58%~100%, y 8%~63% |
-| narration 스크립트 | y 54%~74% |
-| narration 하단 | y 74%~100% |
-| image_num | x 58%~100%, y 63%~78% |
-| screen_num | x 60%~82%, y 0%~12% |
+### 영역 분류 (겹침 51% 기준, `classifyShapeRegion`)
+| 영역 | 대략적 범위 | 추출 |
+|------|-------------|------|
+| screen | x 13%~75%, y 8%~78% | 화면텍스트 |
+| desc | x 58%~100%, y 8%~63% | 제외 |
+| narration | y 54%~100% | 나레이션 (단일 박스 합침) |
+| image_num | x 58%~100%, y 63%~78% | 제외 |
+| menu | x 0%~25% | 제외 |
+| header | 상단 과정명·회차명 등 | 제외 (화면번호만 `screen_num`) |
+| screen_num | x 60%~82%, y 0%~12% | `screen_num` (`01-00`, `01_05` 등) |
 
-화면번호: `buildScreenNum` (마스터 접두 + 슬라이드 접미 조합 가능, 단 마스터 **텍스트**는 병합 제외).
+마스터 도형은 **화면번호 판별에만** 사용. 본문 병합은 레이아웃+슬라이드.
 
 ### screen_text / narration 저장
 - DB `slides.screen_text`, `slides.narration` → text 컬럼, JSON `SlideTextBox[]`
 - `normalizeScreenText` / `normalizeNarration`, `formatScreenText` / `formatNarration`
-- 나레이션 박스 w·h·font_size는 화면텍스트 박스 참조
-- **싱크 마커 유지**: `#1`, `‹#›` 등 나레이션에서 제거하지 않음
-- 화면텍스트만 `#N` 단독 박스 제외 (`isSyncMarkerOnly`)
+- 나레이션: 여러 도형 → 단일 박스, w = 화면텍스트 박스 × 1.5 (2:3 비율)
+- **싱크 마커**: 나레이션 `#1` `#2` 유지, `‹#›`·`<#>`·단독 `#` 제외 (`isBareSyncMarker`)
+- 화면텍스트: `#N` 단독 박스·화면번호 패턴·게티/URL 메타데이터 제외
 
 ### 슬라이드 타입 (번호가 아닌 패턴)
 intro / divider / outro / quiz / apply / lesson / content — ~~slideNum≤9 guide~~ **폐지**

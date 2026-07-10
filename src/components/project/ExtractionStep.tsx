@@ -3,7 +3,6 @@ import {
   SLIDE_TYPE_LABELS,
   formatNarration,
   formatScreenText,
-  normalizeNarration,
   parseNarrationInput,
   parseScreenTextInput,
 } from '../../lib/pptxParser'
@@ -320,13 +319,12 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                   <th>슬라이드번호</th>
                   <th>유형</th>
                   <th>화면번호</th>
-                  <th className="min-w-[240px]">화면텍스트</th>
-                  <th className="min-w-[240px]">나레이션</th>
+                  <th className="w-[22%] min-w-[180px]">화면텍스트</th>
+                  <th className="w-[33%] min-w-[280px]">나레이션</th>
                 </tr>
               </thead>
               <tbody>
                 {pagedSlides.map((slide) => {
-                  const narrationBoxes = normalizeNarration(slide.narration)
                   const noNarration = !formatNarration(slide.narration).trim()
                   return (
                     <tr
@@ -351,7 +349,7 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                           className="nb-input w-full min-w-[80px] text-xs"
                         />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="w-[22%] px-4 py-3">
                         <textarea
                           value={formatScreenText(slide.screen_text)}
                           onChange={(e) =>
@@ -361,40 +359,18 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                           className="nb-textarea w-full text-xs"
                         />
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="space-y-2">
-                          {narrationBoxes?.length ? (
-                            narrationBoxes.map((box, boxIndex) => (
-                              <textarea
-                                key={box.id || boxIndex}
-                                value={box.text}
-                                onChange={(e) => {
-                                  const next = narrationBoxes.map((item, i) =>
-                                    i === boxIndex ? { ...item, text: e.target.value } : item,
-                                  )
-                                  setLocalSlides((prev) =>
-                                    prev.map((s) =>
-                                      s.id === slide.id ? { ...s, narration: next } : s,
-                                    ),
-                                  )
-                                }}
-                                rows={3}
-                                style={
-                                  box.font_size ? { fontSize: `${box.font_size}pt` } : undefined
-                                }
-                                className="nb-textarea w-full text-xs"
-                              />
-                            ))
-                          ) : (
-                            <textarea
-                              value=""
-                              readOnly
-                              rows={3}
-                              placeholder="나레이션 없음"
-                              className="nb-textarea w-full text-xs border-amber-300 bg-amber-50"
-                            />
-                          )}
-                        </div>
+                      <td className="w-[33%] px-4 py-3">
+                        <textarea
+                          value={formatNarration(slide.narration)}
+                          onChange={(e) =>
+                            updateLocalSlide(slide.id, 'narration', e.target.value)
+                          }
+                          rows={3}
+                          placeholder={noNarration ? '나레이션 없음' : ''}
+                          className={`nb-textarea w-full text-xs ${
+                            noNarration ? 'border-amber-300 bg-amber-50' : ''
+                          }`}
+                        />
                       </td>
                     </tr>
                   )

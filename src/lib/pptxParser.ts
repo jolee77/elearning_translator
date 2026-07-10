@@ -293,12 +293,16 @@ function mergeInheritedShapes(...layers: RawShape[][]): RawShape[] {
   return [...inherited, ...slide]
 }
 
-async function getMergedShapesForSlide(bundle: PptxBundle, slideNum: number): Promise<RawShape[]> {
+async function getMergedShapesForSlide(
+  bundle: PptxBundle,
+  slideNum: number,
+): Promise<{ contentShapes: RawShape[]; screenNumShapes: RawShape[] }> {
   const slidePath = `ppt/slides/slide${slideNum}.xml`
   const slideRelsPath = `ppt/slides/_rels/slide${slideNum}.xml.rels`
 
   const slideShapes = await loadShapesFromPart(bundle, slidePath)
   let layoutShapes: RawShape[] = []
+  let masterShapes: RawShape[] = []
 
   const slideRelsFile = bundle.zip.file(slideRelsPath)
   if (slideRelsFile) {
@@ -307,11 +311,27 @@ async function getMergedShapesForSlide(bundle: PptxBundle, slideNum: number): Pr
     if (layoutTarget) {
       const layoutPath = resolvePartPath(slideRelsPath, layoutTarget)
       layoutShapes = await loadShapesFromPart(bundle, layoutPath)
+
+      const layoutName = layoutPath.split('/').pop()!
+      const layoutRelsPath = `ppt/slideLayouts/_rels/${layoutName}.rels`
+      const layoutRelsFile = bundle.zip.file(layoutRelsPath)
+      if (layoutRelsFile) {
+        const layoutRelsXml = await layoutRelsFile.async('string')
+        const masterTarget = findRelationshipTarget(layoutRelsXml, 'slideMaster')
+        if (masterTarget) {
+          const masterPath = resolvePartPath(layoutRelsPath, masterTarget)
+          masterShapes = await loadShapesFromPart(bundle, masterPath)
+        }
+      }
     }
   }
 
-  // 슬라이드 마스터 텍스트(라벨·placeholder)는 번역·추출 대상에서 제외
-  return mergeInheritedShapes([], layoutShapes, slideShapes)
+  return {
+    // 번역·화면/나레이션 추출: 레이아웃+슬라이드만 (마스터 라벨 제외)
+    contentShapes: mergeInheritedShapes([], layoutShapes, slideShapes),
+    // 화면번호: 마스터+레이아웃+슬라이드 (상단 화면번호 영역)
+    screenNumShapes: mergeInheritedShapes(masterShapes, layoutShapes, slideShapes),
+  }
 }
 
 async function createPptxBundle(data: ArrayBuffer | Blob): Promise<PptxBundle> {
@@ -326,7 +346,16 @@ function isScreenNum(x: number, y: number, w: number, h: number): boolean {
 function isScreenNumPartText(text: string): boolean {
   const t = text.trim()
   if (!t || t === '화면번호') return false
+  if (/^\d{2}[-_]\d{2}$/.test(t)) return true
   return /^[\d_\-]+$/.test(t) || /^\d{1,2}$/.test(t) || /^\d{2}[-_]?$/.test(t)
+}
+
+/** 화면번호 패턴 (01-00, 01_00 등) — 화면텍스트가 아닌 screen_num 필드용 */
+export function isScreenNumText(text: string): boolean {
+  const t = text.trim()
+  if (!t) return false
+  if (/^\d{2}[-_]\d{2}$/.test(t)) return true
+  return isScreenNumPartText(t) && t.length <= 8
 }
 
 function buildScreenNum(shapes: RawShape[]): string | null {
@@ -335,9 +364,13 @@ function buildScreenNum(shapes: RawShape[]): string | null {
     .filter((s) => isScreenNumPartText(s.text))
     .sort((a, b) => a.x - b.x)
 
-  if (parts.length === 0) return null
+  if (parts.length === 0) {
+    const inline = shapes.find((s) => isScreenNumText(s.text))
+    if (inline) return inline.text.trim().replace(/_/g, '-')
+    return null
+  }
 
-  const normalized = parts.map((s) => s.text.trim().replace(/_+$/, '-'))
+  const normalized = parts.map((s) => s.text.trim().replace(/_+$/, '-').replace(/_/g, '-'))
   if (normalized.length >= 2) {
     const prefix = normalized[0].replace(/-$/, '')
     const suffix = normalized[normalized.length - 1]
@@ -407,9 +440,16 @@ const SCREEN_NUM_REGION = {
   bottom: 0.12 * SB_CY,
 }
 
-const REGION_THRESHOLD = 0.5
+const REGION_THRESHOLD = 0.51
 
-type ShapeRegionKind = 'screen' | 'narration' | 'desc' | 'other'
+const HEADER_REGION = {
+  left: 0,
+  top: 0,
+  right: SB_CX,
+  bottom: 0.15 * SB_CY,
+}
+
+type ShapeRegionKind = 'screen' | 'narration' | 'desc' | 'image_num' | 'header' | 'other'
 
 function rectOverlapArea(
   ax: number,
@@ -465,10 +505,14 @@ function narrationOverlapRatio(x: number, y: number, w: number, h: number): numb
 function classifyShapeRegion(x: number, y: number, w: number, h: number): ShapeRegionKind {
   const screenR = shapeRegionOverlapRatio(x, y, w, h, SCREEN_REGION)
   const descR = shapeRegionOverlapRatio(x, y, w, h, SCREEN_DESC_REGION)
+  const imgR = shapeRegionOverlapRatio(x, y, w, h, IMAGE_NUM_REGION)
+  const headerR = shapeRegionOverlapRatio(x, y, w, h, HEADER_REGION)
   const narrR = narrationOverlapRatio(x, y, w, h)
 
-  if (narrR > REGION_THRESHOLD && narrR >= screenR && narrR >= descR) return 'narration'
-  if (descR > REGION_THRESHOLD && descR >= screenR) return 'desc'
+  if (headerR > REGION_THRESHOLD && headerR >= screenR) return 'header'
+  if (imgR > REGION_THRESHOLD) return 'image_num'
+  if (descR > REGION_THRESHOLD) return 'desc'
+  if (narrR > REGION_THRESHOLD && narrR >= screenR) return 'narration'
   if (screenR > REGION_THRESHOLD) return 'screen'
   return 'other'
 }
@@ -488,14 +532,6 @@ function isNarrationUILayoutLabel(s: RawShape): boolean {
   const xRight = (s.x + Math.max(s.w, 1)) / SB_CX
   const boxW = Math.max(s.w, 1) / SB_CX
   return xRight <= 0.05 && boxW < 0.05
-}
-
-function isInScreenDescRegion(x: number, y: number, w: number, h: number): boolean {
-  return classifyShapeRegion(x, y, w, h) === 'desc'
-}
-
-function isImageNum(x: number, y: number, w: number, h: number): boolean {
-  return overlapsRegionAtThreshold(x, y, w, h, IMAGE_NUM_REGION)
 }
 
 function isDirectorNote(text: string): boolean {
@@ -546,53 +582,56 @@ function referenceScreenMetrics(
   }
 }
 
-function narrationShapeToBox(
-  s: RawShape,
-  index: number,
-  ref: { w: number; h: number; font_size?: number },
-): SlideTextBox {
-  const hasRef = ref.w > 0 && ref.h > 0
-  return {
-    id: String(index),
-    text: s.text,
-    x: s.x,
-    y: s.y,
-    w: hasRef ? ref.w : s.w,
-    h: hasRef ? ref.h : s.h,
-    font_size: ref.font_size ?? s.fontSize,
-  }
-}
-
 function collectNarrationBoxes(
   shapes: RawShape[],
   screenBoxes: SlideTextBox[],
 ): SlideTextBox[] | null {
   const ref = referenceScreenMetrics(screenBoxes)
+  const parts: string[] = []
   const seen = new Set<string>()
-  const boxes: SlideTextBox[] = []
 
-  const addShape = (s: RawShape) => {
-    const t = s.text.trim()
-    if (!t || isDirectorNote(t) || seen.has(t)) return
-    seen.add(t)
-    boxes.push(narrationShapeToBox(s, boxes.length, ref))
+  const addText = (raw: string) => {
+    const lines = raw
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !isBareSyncMarker(line) && !isDirectorNote(line))
+    for (const line of lines) {
+      if (isNonTranslatableMetadata(line) || seen.has(line)) continue
+      seen.add(line)
+      parts.push(line)
+    }
   }
 
   for (const s of shapes) {
     if (
       classifyShapeRegion(s.x, s.y, s.w, s.h) === 'narration' &&
-      !isNarrationUILayoutLabel(s)
+      !isNarrationUILayoutLabel(s) &&
+      !isNonTranslatableMetadata(s.text)
     ) {
-      addShape(s)
+      addText(s.text)
     }
   }
 
-  if (boxes.length === 0) {
+  if (parts.length === 0) {
     const fallback = findFallbackNarrationShape(shapes)
-    if (fallback) addShape(fallback)
+    if (fallback) addText(fallback.text)
   }
 
-  return boxes.length > 0 ? boxes : null
+  const text = parts.join('\n').trim()
+  if (!text) return null
+
+  const screenW = ref.w > 0 ? ref.w : SB_CX * 0.4
+  return [
+    {
+      id: '0',
+      text,
+      x: 0,
+      y: 0,
+      w: Math.round(screenW * 1.5),
+      h: ref.h > 0 ? ref.h : SB_CY * 0.18,
+      font_size: ref.font_size,
+    },
+  ]
 }
 
 /** 슬라이드 번호가 아닌 화면번호·본문 패턴으로 유형 판별 */
@@ -629,36 +668,57 @@ export function isNonLearningLayout(slideType: SlideType): boolean {
   return slideType === 'intro' || slideType === 'divider' || slideType === 'outro'
 }
 
-/** 나레이션·화면 싱크용 마커 (#, #1, #2 …) — 화면 텍스트 추출 시 제외 */
-export function isSyncMarkerOnly(text: string): boolean {
+/** 이미지출처·URL 등 번역 대상이 아닌 메타데이터 */
+function isNonTranslatableMetadata(text: string): boolean {
   const t = text.trim()
+  if (!t || t === '-') return true
+  if (/^게티\s*\d+/i.test(t) || /^getty\s*\d+/i.test(t)) return true
+  if (/^https?:\/\//i.test(t) || /^www\./i.test(t)) return true
+  if (/^[a-z]+:\/\/\S+/i.test(t)) return true
+  if (/^\d{7,}$/.test(t)) return true
+  return false
+}
+
+/** 숫자 없는 싱크 마커(‹#›, <#>, # 단독) — 제외. #1, #2 등은 유지 */
+export function isBareSyncMarker(text: string): boolean {
+  const t = text.trim()
+  if (!t) return true
+  if (/^#\d+/.test(t)) return false
   if (t === '#') return true
-  return /^#\d+\s*$/.test(t)
+  if (/^[‹<]#?[›>]$/u.test(t)) return true
+  if (/^‹#›$/u.test(t)) return true
+  return /^<#>$/.test(t)
+}
+
+/** 화면텍스트 추출 시 #N 단독 박스 제외 */
+export function isSyncMarkerOnly(text: string): boolean {
+  return isBareSyncMarker(text) || /^#\d+\s*$/.test(text.trim())
 }
 
 function isLayoutChrome(s: RawShape): boolean {
   const region = classifyShapeRegion(s.x, s.y, s.w, s.h)
 
-  if (region === 'screen') {
-    return (
-      isMenu(s.x, s.y, s.w, s.h) ||
-      overlapsRegionAtThreshold(s.x, s.y, s.w, s.h, SCREEN_NUM_REGION) ||
-      isSyncMarkerOnly(s.text)
-    )
-  }
-
   return (
+    region === 'header' ||
+    region === 'desc' ||
+    region === 'image_num' ||
     isMenu(s.x, s.y, s.w, s.h) ||
     overlapsRegionAtThreshold(s.x, s.y, s.w, s.h, SCREEN_NUM_REGION) ||
     isCourseName(s.x, s.y, s.w, s.h) ||
     isChapterName(s.x, s.y, s.w, s.h) ||
-    isSyncMarkerOnly(s.text)
+    isScreenNumText(s.text) ||
+    isSyncMarkerOnly(s.text) ||
+    isNonTranslatableMetadata(s.text)
   )
 }
 
 function isScreenTextExcluded(s: RawShape): boolean {
   const region = classifyShapeRegion(s.x, s.y, s.w, s.h)
-  return region !== 'screen' || isLayoutChrome(s) || isDirectorNote(s.text)
+  return (
+    region !== 'screen' ||
+    isLayoutChrome(s) ||
+    isDirectorNote(s.text)
+  )
 }
 
 function rawShapeToBox(s: RawShape, index: number): SlideTextBox {
@@ -683,31 +743,7 @@ function findFallbackScreenText(shapes: RawShape[]): SlideTextBox[] {
     .map(rawShapeToBox)
 }
 
-function isNonLearningExcluded(s: RawShape): boolean {
-  const region = classifyShapeRegion(s.x, s.y, s.w, s.h)
-  return (
-    region === 'desc' ||
-    region === 'narration' ||
-    isLayoutChrome(s) ||
-    isDirectorNote(s.text)
-  )
-}
-
-function toScreenBoxes(shapes: RawShape[], slideType: SlideType): SlideTextBox[] {
-  if (isNonLearningLayout(slideType)) {
-    const seenText = new Set<string>()
-    return shapes
-      .filter((s) => {
-        const text = s.text.trim()
-        if (!text || isNonLearningExcluded(s)) return false
-        if (seenText.has(text)) return false
-        seenText.add(text)
-        return true
-      })
-      .sort((a, b) => a.y - b.y || a.x - b.x)
-      .map((s, i) => rawShapeToBox(s, i))
-  }
-
+function toScreenBoxes(shapes: RawShape[], _slideType: SlideType): SlideTextBox[] {
   const primary = shapes
     .filter(
       (s) =>
@@ -722,6 +758,21 @@ function toScreenBoxes(shapes: RawShape[], slideType: SlideType): SlideTextBox[]
   return findFallbackScreenText(shapes)
 }
 
+function resolveScreenNum(
+  screenNumShapes: RawShape[],
+  screenBoxes: SlideTextBox[],
+): { screenNum: string | null; screenBoxes: SlideTextBox[] } {
+  let screenNum = buildScreenNum(screenNumShapes)
+
+  const filtered = screenBoxes.filter((box) => {
+    if (!isScreenNumText(box.text)) return true
+    if (!screenNum) screenNum = box.text.trim().replace(/_/g, '-')
+    return false
+  })
+
+  return { screenNum, screenBoxes: filtered }
+}
+
 function findSpTree(root: Element): Element | null {
   const cSld = firstChildByLocalName(root, 'cSld')
   if (cSld) return firstChildByLocalName(cSld, 'spTree')
@@ -729,34 +780,19 @@ function findSpTree(root: Element): Element | null {
 }
 
 function parseSlideWithShapes(
-  shapes: RawShape[],
+  contentShapes: RawShape[],
+  screenNumShapes: RawShape[],
   slideNum: number,
   totalSlides: number,
 ): ParsedSlide {
-  const slideType = classifySlideType(shapes, slideNum, totalSlides)
+  const slideType = classifySlideType(screenNumShapes, slideNum, totalSlides)
 
-  const cnShapes = shapes.filter((s) => isCourseName(s.x, s.y, s.w, s.h))
-  const chShapes = shapes.filter((s) => isChapterName(s.x, s.y, s.w, s.h))
-  const descShapes = shapes.filter((s) => isInScreenDescRegion(s.x, s.y, s.w, s.h))
-  const imgShapes = shapes.filter((s) => isImageNum(s.x, s.y, s.w, s.h))
+  const rawScreenBoxes = toScreenBoxes(contentShapes, slideType)
+  const { screenNum, screenBoxes } = resolveScreenNum(screenNumShapes, rawScreenBoxes)
+  const narration = collectNarrationBoxes(contentShapes, screenBoxes)
 
-  const screenNum = buildScreenNum(shapes)
-
-  const screenDesc =
-    descShapes
-      .map((s) => s.text)
-      .join('\n')
-      .trim() || null
-
-  const imageNums =
-    imgShapes
-      .filter((s) => s.text !== '-')
-      .map((s) => s.text)
-      .join(', ')
-      .trim() || null
-
-  const screenBoxes = toScreenBoxes(shapes, slideType)
-  const narration = collectNarrationBoxes(shapes, screenBoxes)
+  const cnShapes = screenNumShapes.filter((s) => isCourseName(s.x, s.y, s.w, s.h))
+  const chShapes = screenNumShapes.filter((s) => isChapterName(s.x, s.y, s.w, s.h))
 
   const courseName =
     cnShapes
@@ -779,8 +815,8 @@ function parseSlideWithShapes(
     chapter_name: chapterName,
     current_section: null,
     screen_text: screenBoxes.length > 0 ? screenBoxes : null,
-    screen_desc: screenDesc,
-    image_nums: imageNums,
+    screen_desc: null,
+    image_nums: null,
     narration,
   }
 }
@@ -819,8 +855,8 @@ export async function parsePptx(
 
   for (let i = 0; i < slidePaths.length; i++) {
     const slideNum = i + 1
-    const shapes = await getMergedShapesForSlide(bundle, slideNum)
-    slides.push(parseSlideWithShapes(shapes, slideNum, total))
+    const { contentShapes, screenNumShapes } = await getMergedShapesForSlide(bundle, slideNum)
+    slides.push(parseSlideWithShapes(contentShapes, screenNumShapes, slideNum, total))
 
     onProgress?.({ current: i + 1, total, phase: 'parsing' })
 
@@ -845,8 +881,8 @@ export async function parseSingleSlide(
   if (!bundle.zip.file(path)) {
     throw new Error(`슬라이드 ${slideNum}을(를) 찾을 수 없습니다. (총 ${total}장)`)
   }
-  const shapes = await getMergedShapesForSlide(bundle, slideNum)
-  return parseSlideWithShapes(shapes, slideNum, total)
+  const { contentShapes, screenNumShapes } = await getMergedShapesForSlide(bundle, slideNum)
+  return parseSlideWithShapes(contentShapes, screenNumShapes, slideNum, total)
 }
 
 export const SLIDE_TYPE_LABELS: Record<SlideType, string> = {
