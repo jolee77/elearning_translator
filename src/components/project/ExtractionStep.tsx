@@ -22,20 +22,9 @@ import { ChunkProgressPanel } from '../ui/ChunkProgressPanel'
 import { Spinner } from '../ui/Spinner'
 import type { ChunkProgress } from '../../lib/chunkProgress'
 import type { Project } from '../../types'
-import type { Slide, SlideType } from '../../types'
+import type { Slide } from '../../types'
 
 const PAGE_SIZE = 20
-
-const FILTER_TYPES: Array<{ value: SlideType | 'all'; label: string }> = [
-  { value: 'all', label: '전체' },
-  { value: 'intro', label: '인트로' },
-  { value: 'lesson', label: '레슨' },
-  { value: 'content', label: '콘텐츠' },
-  { value: 'divider', label: '간지' },
-  { value: 'quiz', label: '문제풀기' },
-  { value: 'apply', label: '적용하기' },
-  { value: 'outro', label: '아웃트로' },
-]
 
 interface ExtractionStepProps {
   project: Project
@@ -59,7 +48,6 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
   const replacePptx = useReplaceProjectPptx()
 
   const [localSlides, setLocalSlides] = useState<Slide[]>([])
-  const [typeFilter, setTypeFilter] = useState<SlideType | 'all'>('all')
   const [autoExtractAttempted, setAutoExtractAttempted] = useState(false)
   const [page, setPage] = useState(0)
   const [extractProgress, setExtractProgress] = useState<ParseProgress | null>(null)
@@ -100,22 +88,13 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
     }
   }, [extractSlides, project.id, project.source_pptx_url, showToast])
 
-  const filteredSlides = useMemo(() => {
-    if (typeFilter === 'all') return localSlides
-    return localSlides.filter((s) => s.slide_type === typeFilter)
-  }, [localSlides, typeFilter])
-
-  const totalPages = Math.max(1, Math.ceil(filteredSlides.length / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(localSlides.length / PAGE_SIZE))
 
   const pagedSlides = useMemo(() => {
     const safePage = Math.min(page, totalPages - 1)
     const start = safePage * PAGE_SIZE
-    return filteredSlides.slice(start, start + PAGE_SIZE)
-  }, [filteredSlides, page, totalPages])
-
-  useEffect(() => {
-    setPage(0)
-  }, [typeFilter])
+    return localSlides.slice(start, start + PAGE_SIZE)
+  }, [localSlides, page, totalPages])
 
   useEffect(() => {
     if (page >= totalPages) {
@@ -375,26 +354,6 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {FILTER_TYPES.map((filter) => (
-          <button
-            key={filter.value}
-            type="button"
-            onClick={() => setTypeFilter(filter.value)}
-            className={`nb-filter-pill ${
-              typeFilter === filter.value
-                ? 'nb-filter-pill--active'
-                : 'nb-filter-pill--inactive'
-            }`}
-          >
-            {filter.label}
-            {filter.value === 'all'
-              ? ` (${localSlides.length})`
-              : ` (${localSlides.filter((s) => s.slide_type === filter.value).length})`}
-          </button>
-        ))}
-      </div>
-
       {slidesLoading || isExtracting ? (
         <div className="nb-empty-state">
           <Spinner className="text-gray-400" />
@@ -489,11 +448,11 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
               </tbody>
             </table>
           </div>
-          {filteredSlides.length > PAGE_SIZE && (
+          {localSlides.length > PAGE_SIZE && (
             <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
               <p className="text-xs text-gray-500">
-                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filteredSlides.length)} /{' '}
-                {filteredSlides.length}개 슬라이드
+                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, localSlides.length)} /{' '}
+                {localSlides.length}개 슬라이드
               </p>
               <div className="flex gap-2">
                 <button
@@ -514,11 +473,6 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                 </button>
               </div>
             </div>
-          )}
-          {filteredSlides.length === 0 && (
-            <p className="px-4 py-8 text-center text-sm text-gray-500">
-              선택한 유형의 슬라이드가 없습니다.
-            </p>
           )}
         </div>
       )}
