@@ -502,16 +502,36 @@ function narrationOverlapRatio(x: number, y: number, w: number, h: number): numb
   )
 }
 
+function shapeCenterRatio(x: number, y: number, w: number, h: number): { cx: number; cy: number } {
+  const boxW = Math.max(w, 1)
+  const boxH = Math.max(h, 1)
+  return {
+    cx: (x + boxW / 2) / SB_CX,
+    cy: (y + boxH / 2) / SB_CY,
+  }
+}
+
 function classifyShapeRegion(x: number, y: number, w: number, h: number): ShapeRegionKind {
   const screenR = shapeRegionOverlapRatio(x, y, w, h, SCREEN_REGION)
   const descR = shapeRegionOverlapRatio(x, y, w, h, SCREEN_DESC_REGION)
   const imgR = shapeRegionOverlapRatio(x, y, w, h, IMAGE_NUM_REGION)
   const headerR = shapeRegionOverlapRatio(x, y, w, h, HEADER_REGION)
   const narrR = narrationOverlapRatio(x, y, w, h)
+  const { cx, cy } = shapeCenterRatio(x, y, w, h)
 
   if (headerR > REGION_THRESHOLD && headerR >= screenR) return 'header'
   if (imgR > REGION_THRESHOLD) return 'image_num'
   if (descR > REGION_THRESHOLD) return 'desc'
+
+  // 화면·나레이션 스크립트 밴드가 겹치는 구간 — 중심 좌표로 판별
+  if (screenR > REGION_THRESHOLD && narrR > REGION_THRESHOLD) {
+    if (cy >= 0.74) return 'narration'
+    if (cx <= 0.12) return 'narration'
+    if (cx > 0.13 && cx < 0.75) return 'screen'
+    if (narrR >= screenR) return 'narration'
+    return 'screen'
+  }
+
   if (narrR > REGION_THRESHOLD && narrR >= screenR) return 'narration'
   if (screenR > REGION_THRESHOLD) return 'screen'
   return 'other'
