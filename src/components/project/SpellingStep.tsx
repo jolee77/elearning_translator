@@ -5,7 +5,6 @@ import { SuggestionHighlight } from '../ui/SuggestionHighlight'
 import { useToast } from '../../hooks/ToastProvider'
 import {
   hasSpellingChanges,
-  isSpellingCheckComplete,
   isSpellingCheckInterrupted,
   isSpellingPendingReview,
   isSpellingReviewSettled,
@@ -143,7 +142,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
   )
 
   const checkCompleted =
-    isSpellingCheckComplete(project.status) ||
+    project.status === 'spelling_done' ||
     checkPhase === 'done' ||
     results.length > 0
 

@@ -261,13 +261,14 @@ serve(async (req) => {
     }
 
     if (shouldFinalize) {
-      await updateProjectStatus(serviceClient, body.project_id, 'spelling_done')
+      // AI 검사만 완료 — spelling_done은 사용자가 검토 완료할 때 클라이언트에서 설정
+      await updateProjectStatus(serviceClient, body.project_id, 'spelling')
 
       await serviceClient.from('change_logs').insert({
         project_id: body.project_id,
         user_id: user.id,
         action: 'spelling_applied',
-        detail: `${rowsToInsert.length}건 맞춤법 검사 완료`,
+        detail: `${rowsToInsert.length}건 맞춤법 AI 검사 완료 (검토 대기)`,
       })
     }
 

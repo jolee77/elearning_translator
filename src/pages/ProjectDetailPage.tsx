@@ -21,9 +21,13 @@ export function ProjectDetailPage() {
   const currentStep = project ? statusToStep(project.status) : 1
 
   useEffect(() => {
-    if (project) {
-      setViewStep(statusToStep(project.status))
-    }
+    if (!project) return
+    setViewStep((prev) => {
+      const next = statusToStep(project.status)
+      // 맞춤법 검토 중(spelling)에는 자동으로 다음 단계로 넘기지 않음
+      if (project.status === 'spelling' && prev === 2) return prev
+      return next
+    })
   }, [project?.status, project?.id])
 
   const handleStepClick = (step: number) => {
