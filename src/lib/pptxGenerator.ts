@@ -307,9 +307,7 @@ function insertShapeAfter(
   }
 }
 
-function processSlideXml(xml: string, slideNum: number, translations: Translation[]): string {
-  if (slideNum <= 9) return xml
-
+function processSlideXml(xml: string, _slideNum: number, translations: Translation[]): string {
   const doc = new DOMParser().parseFromString(xml, 'application/xml')
   const spTree = firstChildByLocalName(doc.documentElement, 'cSld')
     ? firstChildByLocalName(firstChildByLocalName(doc.documentElement, 'cSld')!, 'spTree')

@@ -26,18 +26,6 @@ interface RawShape {
   fontSize?: number
 }
 
-const MENU_SECTION_LABELS = new Set([
-  '학습열기',
-  '학습목표',
-  '학습내용',
-  '문제풀기',
-  '적용하기',
-  '핵심 쏙!쏙! 편집 스킬 UP',
-  '학습내용1',
-  '학습내용2',
-  '참고자료',
-])
-
 function elementsByLocalName(root: Element, localName: string): Element[] {
   const result: Element[] = []
   const walk = (node: Element) => {
@@ -67,9 +55,29 @@ function attrInt(el: Element | null, localName: string): number {
   return val ? parseInt(val, 10) : 0
 }
 
+/** 단락 내 텍스트 run·줄바꿈(<a:br/>) 순서를 유지해 추출 */
 function extractParagraphText(p: Element): string {
-  const runs = elementsByLocalName(p, 't')
-  return runs.map((t) => t.textContent ?? '').join('')
+  const parts: string[] = []
+
+  const walk = (node: Element) => {
+    for (const child of Array.from(node.children)) {
+      if (!(child instanceof Element)) continue
+      if (child.localName === 't') {
+        parts.push(child.textContent ?? '')
+      } else if (child.localName === 'br') {
+        parts.push('\n')
+      } else if (
+        child.localName === 'r' ||
+        child.localName === 'fld' ||
+        child.localName === 'hyperlink'
+      ) {
+        walk(child)
+      }
+    }
+  }
+
+  walk(p)
+  return parts.join('')
 }
 
 function extractBodyText(txBody: Element): string {
@@ -222,8 +230,135 @@ function extractShapes(spTree: Element): RawShape[] {
   return collectRawShapes(spTree)
 }
 
-function isScreenNum(x: number, y: number, w: number, _h: number): boolean {
-  return x / SB_CX > 0.79 && y / SB_CY < 0.12 && w / SB_CX < 0.2
+interface PptxBundle {
+  zip: JSZip
+  partShapesCache: Map<string, RawShape[]>
+}
+
+function findRelationshipTarget(relsXml: string, partName: string): string | null {
+  const doc = new DOMParser().parseFromString(relsXml, 'application/xml')
+  for (const rel of elementsByLocalName(doc.documentElement, 'Relationship')) {
+    const type = rel.getAttribute('Type') ?? ''
+    if (type.includes(partName)) {
+      return rel.getAttribute('Target')
+    }
+  }
+  return null
+}
+
+function resolvePartPath(relsFilePath: string, target: string): string {
+  const dir = relsFilePath.replace(/\/_rels\/[^/]+$/, '')
+  const parts = dir.split('/').filter(Boolean)
+  for (const seg of target.split('/')) {
+    if (seg === '..') parts.pop()
+    else if (seg && seg !== '.') parts.push(seg)
+  }
+  return parts.join('/')
+}
+
+async function loadShapesFromPart(bundle: PptxBundle, partPath: string): Promise<RawShape[]> {
+  const cached = bundle.partShapesCache.get(partPath)
+  if (cached) return cached
+
+  const file = bundle.zip.file(partPath)
+  if (!file) {
+    bundle.partShapesCache.set(partPath, [])
+    return []
+  }
+
+  const xml = await file.async('string')
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  const spTree = findSpTree(doc.documentElement)
+  const shapes = spTree ? extractShapes(spTree) : []
+  bundle.partShapesCache.set(partPath, shapes)
+  return shapes
+}
+
+/** 마스터 → 레이아웃 → 슬라이드 순 병합 (슬라이드가 동일 위치를 덮어쓰면 마스터/레이아웃 제외) */
+function mergeInheritedShapes(...layers: RawShape[][]): RawShape[] {
+  const master = layers[0] ?? []
+  const layout = layers[1] ?? []
+  const slide = layers[2] ?? []
+
+  const slidePosKeys = new Set(
+    slide.map((s) => `${Math.round(s.x / 40_000)}:${Math.round(s.y / 40_000)}`),
+  )
+
+  const inherited = [...master, ...layout].filter((s) => {
+    const key = `${Math.round(s.x / 40_000)}:${Math.round(s.y / 40_000)}`
+    return !slidePosKeys.has(key)
+  })
+
+  return [...inherited, ...slide]
+}
+
+async function getMergedShapesForSlide(bundle: PptxBundle, slideNum: number): Promise<RawShape[]> {
+  const slidePath = `ppt/slides/slide${slideNum}.xml`
+  const slideRelsPath = `ppt/slides/_rels/slide${slideNum}.xml.rels`
+
+  const slideShapes = await loadShapesFromPart(bundle, slidePath)
+  let layoutShapes: RawShape[] = []
+  let masterShapes: RawShape[] = []
+
+  const slideRelsFile = bundle.zip.file(slideRelsPath)
+  if (slideRelsFile) {
+    const slideRelsXml = await slideRelsFile.async('string')
+    const layoutTarget = findRelationshipTarget(slideRelsXml, 'slideLayout')
+    if (layoutTarget) {
+      const layoutPath = resolvePartPath(slideRelsPath, layoutTarget)
+      layoutShapes = await loadShapesFromPart(bundle, layoutPath)
+
+      const layoutName = layoutPath.split('/').pop()!
+      const layoutRelsPath = `ppt/slideLayouts/_rels/${layoutName}.rels`
+      const layoutRelsFile = bundle.zip.file(layoutRelsPath)
+      if (layoutRelsFile) {
+        const layoutRelsXml = await layoutRelsFile.async('string')
+        const masterTarget = findRelationshipTarget(layoutRelsXml, 'slideMaster')
+        if (masterTarget) {
+          const masterPath = resolvePartPath(layoutRelsPath, masterTarget)
+          masterShapes = await loadShapesFromPart(bundle, masterPath)
+        }
+      }
+    }
+  }
+
+  return mergeInheritedShapes(masterShapes, layoutShapes, slideShapes)
+}
+
+async function createPptxBundle(data: ArrayBuffer | Blob): Promise<PptxBundle> {
+  const zip = await JSZip.loadAsync(data)
+  return { zip, partShapesCache: new Map() }
+}
+
+function isScreenNum(x: number, y: number, w: number, h: number): boolean {
+  return overlapsRegionAtThreshold(x, y, w, h, SCREEN_NUM_REGION)
+}
+
+function isScreenNumPartText(text: string): boolean {
+  const t = text.trim()
+  if (!t || t === '화면번호') return false
+  return /^[\d_\-]+$/.test(t) || /^\d{1,2}$/.test(t) || /^\d{2}[-_]?$/.test(t)
+}
+
+function buildScreenNum(shapes: RawShape[]): string | null {
+  const parts = shapes
+    .filter((s) => overlapsRegionAtThreshold(s.x, s.y, s.w, s.h, SCREEN_NUM_REGION))
+    .filter((s) => isScreenNumPartText(s.text))
+    .sort((a, b) => a.x - b.x)
+
+  if (parts.length === 0) return null
+
+  const normalized = parts.map((s) => s.text.trim().replace(/_+$/, '-'))
+  if (normalized.length >= 2) {
+    const prefix = normalized[0].replace(/-$/, '')
+    const suffix = normalized[normalized.length - 1]
+    if (/^\d{1,2}$/.test(suffix)) {
+      return `${prefix}-${suffix}`
+    }
+  }
+
+  const joined = normalized.join('').replace(/(\d{2})-?(\d{1,2})$/, '$1-$2')
+  return joined || null
 }
 
 function isCourseName(x: number, y: number, _w: number, _h: number): boolean {
@@ -234,52 +369,146 @@ function isChapterName(x: number, y: number, _w: number, _h: number): boolean {
   return x / SB_CX > 0.1 && x / SB_CX < 0.35 && y / SB_CY >= 0.08 && y / SB_CY < 0.15
 }
 
-/** 좌측 목차: 박스 전체가 좌측 25% 안에 있을 때만 (왼쪽 끝만 닿으면 화면 텍스트로 인정) */
+/** 좌측 목차: 박스 전체가 좌측 25% 안에 있을 때만 */
 function isMenu(x: number, y: number, w: number, h: number): boolean {
   const xRight = (x + w) / SB_CX
   const yBottom = (y + h) / SB_CY
   return xRight <= 0.25 && y / SB_CY >= 0.08 && yBottom <= 0.78
 }
 
-/** 중앙 화면 영역과 겹치는 박스 (크기 0이면 중심점으로 판별) */
-function overlapsScreenContent(x: number, y: number, w: number, h: number): boolean {
+const SCREEN_REGION = {
+  left: 0.13 * SB_CX,
+  top: 0.08 * SB_CY,
+  right: 0.75 * SB_CX,
+  bottom: 0.78 * SB_CY,
+}
+
+const SCREEN_DESC_REGION = {
+  left: 0.58 * SB_CX,
+  top: 0.08 * SB_CY,
+  right: SB_CX,
+  bottom: 0.63 * SB_CY,
+}
+
+const NARRATION_SCRIPT_REGION = {
+  left: 0,
+  top: 0.54 * SB_CY,
+  right: SB_CX,
+  bottom: 0.74 * SB_CY,
+}
+
+const IMAGE_NUM_REGION = {
+  left: 0.58 * SB_CX,
+  top: 0.63 * SB_CY,
+  right: SB_CX,
+  bottom: 0.78 * SB_CY,
+}
+
+const NARRATION_BOTTOM_REGION = {
+  left: 0,
+  top: 0.74 * SB_CY,
+  right: SB_CX,
+  bottom: SB_CY,
+}
+
+const SCREEN_NUM_REGION = {
+  left: 0.6 * SB_CX,
+  top: 0,
+  right: 0.82 * SB_CX,
+  bottom: 0.12 * SB_CY,
+}
+
+const REGION_THRESHOLD = 0.5
+
+type ShapeRegionKind = 'screen' | 'narration' | 'desc' | 'other'
+
+function rectOverlapArea(
+  ax: number,
+  ay: number,
+  aw: number,
+  ah: number,
+  bx: number,
+  by: number,
+  bw: number,
+  bh: number,
+): number {
+  const x1 = Math.max(ax, bx)
+  const y1 = Math.max(ay, by)
+  const x2 = Math.min(ax + aw, bx + bw)
+  const y2 = Math.min(ay + ah, by + bh)
+  if (x2 <= x1 || y2 <= y1) return 0
+  return (x2 - x1) * (y2 - y1)
+}
+
+function shapeRegionOverlapRatio(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  region: { left: number; top: number; right: number; bottom: number },
+): number {
+  const boxW = Math.max(w, 1)
+  const boxH = Math.max(h, 1)
+  const boxArea = boxW * boxH
+  const regionW = region.right - region.left
+  const regionH = region.bottom - region.top
+  const overlap = rectOverlapArea(x, y, boxW, boxH, region.left, region.top, regionW, regionH)
+  return overlap / boxArea
+}
+
+function overlapsRegionAtThreshold(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  region: { left: number; top: number; right: number; bottom: number },
+): boolean {
+  return shapeRegionOverlapRatio(x, y, w, h, region) > REGION_THRESHOLD
+}
+
+function narrationOverlapRatio(x: number, y: number, w: number, h: number): number {
+  return Math.max(
+    shapeRegionOverlapRatio(x, y, w, h, NARRATION_SCRIPT_REGION),
+    shapeRegionOverlapRatio(x, y, w, h, NARRATION_BOTTOM_REGION),
+  )
+}
+
+function classifyShapeRegion(x: number, y: number, w: number, h: number): ShapeRegionKind {
+  const screenR = shapeRegionOverlapRatio(x, y, w, h, SCREEN_REGION)
+  const descR = shapeRegionOverlapRatio(x, y, w, h, SCREEN_DESC_REGION)
+  const narrR = narrationOverlapRatio(x, y, w, h)
+
+  if (narrR > REGION_THRESHOLD && narrR >= screenR && narrR >= descR) return 'narration'
+  if (descR > REGION_THRESHOLD && descR >= screenR) return 'desc'
+  if (screenR > REGION_THRESHOLD) return 'screen'
+  return 'other'
+}
+
+/** @internal 레거시 호환 */
+export function overlapsScreenContent(x: number, y: number, w: number, h: number): boolean {
   if (w <= 0 && h <= 0) {
     const cx = x / SB_CX
     const cy = y / SB_CY
     return cx > 0.13 && cx < 0.75 && cy > 0.08 && cy < 0.78
   }
-
-  const xR = x / SB_CX
-  const xRight = (x + Math.max(w, 0)) / SB_CX
-  const yR = y / SB_CY
-  const yBottom = (y + Math.max(h, 0)) / SB_CY
-  if (xRight > 0.13 && xR < 0.75 && yBottom > 0.08 && yR < 0.78) return true
-
-  const cx = (x + w / 2) / SB_CX
-  const cy = (y + h / 2) / SB_CY
-  return cx > 0.13 && cx < 0.75 && cy > 0.08 && cy < 0.78
+  return overlapsRegionAtThreshold(x, y, w, h, SCREEN_REGION)
 }
 
-function isScreen(x: number, y: number, w: number, h: number): boolean {
-  return overlapsScreenContent(x, y, w, h)
+function isNarrationUILayoutLabel(s: RawShape): boolean {
+  if (classifyShapeRegion(s.x, s.y, s.w, s.h) !== 'narration') return false
+  const xRight = (s.x + Math.max(s.w, 1)) / SB_CX
+  const boxW = Math.max(s.w, 1) / SB_CX
+  return xRight <= 0.05 && boxW < 0.05
 }
 
-function isScreenDesc(x: number, y: number, _w: number, _h: number): boolean {
-  return x / SB_CX >= 0.75 && y / SB_CY < 0.63
+function isInScreenDescRegion(x: number, y: number, w: number, h: number): boolean {
+  return classifyShapeRegion(x, y, w, h) === 'desc'
 }
 
-function isImageNum(x: number, y: number, _w: number, _h: number): boolean {
-  return x / SB_CX >= 0.75 && y / SB_CY >= 0.63 && y / SB_CY < 0.78
+function isImageNum(x: number, y: number, w: number, h: number): boolean {
+  return overlapsRegionAtThreshold(x, y, w, h, IMAGE_NUM_REGION)
 }
 
-function isNarration(x: number, y: number, _w: number, _h: number): boolean {
-  const xR = x / SB_CX
-  const yR = y / SB_CY
-  if (yR >= 0.78) return true
-  return yR >= 0.74 && yR < 0.86 && xR < 0.15
-}
-
-/** 제작 지시(애니메이션/연출) 문구 — 나레이션 본문이 아님 */
 function isDirectorNote(text: string): boolean {
   const t = text.trim()
   if (!t) return true
@@ -296,21 +525,13 @@ function isDirectorNote(text: string): boolean {
   return false
 }
 
-function isNarrationCandidate(text: string): boolean {
-  const t = text.trim()
-  if (!/^#\d/.test(t)) return false
-  if (t.length < 40) return false
-  return !isDirectorNote(t)
-}
-
-/** 좌표가 (0,0)인 나레이션 박스 — 위치 기반 분류 실패 시 텍스트 패턴으로 보완 */
 function findFallbackNarration(shapes: RawShape[]): string | null {
   const candidates = shapes.filter(
     (s) =>
-      isNarrationCandidate(s.text) &&
-      !isScreen(s.x, s.y, s.w, s.h) &&
-      !isScreenDesc(s.x, s.y, s.w, s.h) &&
-      !isMenu(s.x, s.y, s.w, s.h),
+      classifyShapeRegion(s.x, s.y, s.w, s.h) === 'narration' &&
+      !isNarrationUILayoutLabel(s) &&
+      !isDirectorNote(s.text) &&
+      !isSyncMarkerOnly(s.text),
   )
   if (candidates.length === 0) return null
 
@@ -325,7 +546,40 @@ function findFallbackNarration(shapes: RawShape[]): string | null {
   )
 }
 
-function classifySlideType(shapes: RawShape[], slideNum: number): SlideType {
+function collectNarration(shapes: RawShape[]): string | null {
+  const parts: string[] = []
+  const seen = new Set<string>()
+
+  const addPart = (text: string) => {
+    const t = text.trim()
+    if (!t || seen.has(t) || isDirectorNote(t) || isSyncMarkerOnly(t)) return
+    seen.add(t)
+    parts.push(t)
+  }
+
+  for (const s of shapes) {
+    if (
+      classifyShapeRegion(s.x, s.y, s.w, s.h) === 'narration' &&
+      !isNarrationUILayoutLabel(s)
+    ) {
+      addPart(s.text)
+    }
+  }
+
+  if (parts.length === 0) {
+    const fallback = findFallbackNarration(shapes)
+    if (fallback) addPart(fallback)
+  }
+
+  return parts.length > 0 ? parts.join('\n') : null
+}
+
+/** 슬라이드 번호가 아닌 화면번호·본문 패턴으로 유형 판별 */
+function classifySlideType(
+  shapes: RawShape[],
+  slideNum: number,
+  totalSlides: number,
+): SlideType {
   const topTxt = shapes
     .filter((s) => isScreenNum(s.x, s.y, s.w, s.h))
     .map((s) => s.text)
@@ -333,7 +587,14 @@ function classifySlideType(shapes: RawShape[], slideNum: number): SlideType {
 
   const anyTxt = shapes.map((s) => s.text).join(' ')
 
-  if (slideNum <= 9) return 'guide'
+  if (slideNum === 1) return 'intro'
+  if (slideNum <= 3 && totalSlides > 4) return 'divider'
+  if (slideNum === totalSlides && (topTxt.includes('OUTRO') || anyTxt.includes('아웃트로'))) {
+    return 'outro'
+  }
+  if (slideNum === totalSlides && /\boutro\b/i.test(anyTxt)) {
+    return 'outro'
+  }
   if (topTxt.includes('간지') || anyTxt.includes('간지')) return 'divider'
   if (topTxt.includes('INTRO') || /\d{2}_01\b/.test(topTxt)) return 'intro'
   if (topTxt.includes('OUTRO') || topTxt.includes('아웃트로')) return 'outro'
@@ -343,26 +604,40 @@ function classifySlideType(shapes: RawShape[], slideNum: number): SlideType {
   return 'content'
 }
 
-/** 나레이션·화면 싱크용 마커 (#1, #2 …) — 화면 텍스트 추출 시 제외 */
+export function isNonLearningLayout(slideType: SlideType): boolean {
+  return slideType === 'intro' || slideType === 'divider' || slideType === 'outro'
+}
+
+/** 나레이션·화면 싱크용 마커 (#, #1, #2 …) — 화면 텍스트 추출 시 제외 */
 export function isSyncMarkerOnly(text: string): boolean {
-  return /^#\d+\s*$/.test(text.trim())
+  const t = text.trim()
+  if (t === '#') return true
+  return /^#\d+\s*$/.test(t)
+}
+
+function isLayoutChrome(s: RawShape): boolean {
+  const region = classifyShapeRegion(s.x, s.y, s.w, s.h)
+
+  if (region === 'screen') {
+    return (
+      isMenu(s.x, s.y, s.w, s.h) ||
+      overlapsRegionAtThreshold(s.x, s.y, s.w, s.h, SCREEN_NUM_REGION) ||
+      isSyncMarkerOnly(s.text)
+    )
+  }
+
+  return (
+    isMenu(s.x, s.y, s.w, s.h) ||
+    overlapsRegionAtThreshold(s.x, s.y, s.w, s.h, SCREEN_NUM_REGION) ||
+    isCourseName(s.x, s.y, s.w, s.h) ||
+    isChapterName(s.x, s.y, s.w, s.h) ||
+    isSyncMarkerOnly(s.text)
+  )
 }
 
 function isScreenTextExcluded(s: RawShape): boolean {
-  const firstLine = s.text.split('\n')[0]?.trim() ?? ''
-  return (
-    isSyncMarkerOnly(s.text) ||
-    isMenu(s.x, s.y, s.w, s.h) ||
-    isNarration(s.x, s.y, s.w, s.h) ||
-    isScreenDesc(s.x, s.y, s.w, s.h) ||
-    isScreenNum(s.x, s.y, s.w, s.h) ||
-    isCourseName(s.x, s.y, s.w, s.h) ||
-    isChapterName(s.x, s.y, s.w, s.h) ||
-    isImageNum(s.x, s.y, s.w, s.h) ||
-    isDirectorNote(s.text) ||
-    MENU_SECTION_LABELS.has(firstLine) ||
-    /^출처\s*:/.test(s.text.trim())
-  )
+  const region = classifyShapeRegion(s.x, s.y, s.w, s.h)
+  return region !== 'screen' || isLayoutChrome(s) || isDirectorNote(s.text)
 }
 
 function rawShapeToBox(s: RawShape, index: number): SlideTextBox {
@@ -377,37 +652,50 @@ function rawShapeToBox(s: RawShape, index: number): SlideTextBox {
   }
 }
 
-/** 화면 세로 밴드(8%~78%) 안인지 — 높이 0이면 상단 y 기준 */
-function isInScreenVerticalBand(y: number, h: number): boolean {
-  const mid = h > 0 ? (y + h / 2) / SB_CY : y / SB_CY
-  return mid >= 0.08 && mid < 0.78
-}
-
-/** 좌표 분류 실패 시 화면 세로 밴드 안의 비-UI 텍스트 보완 */
 function findFallbackScreenText(shapes: RawShape[]): SlideTextBox[] {
   return shapes
     .filter((s) => {
       if (!s.text.trim() || isScreenTextExcluded(s)) return false
-      if (overlapsScreenContent(s.x, s.y, s.w, s.h) && !isMenu(s.x, s.y, s.w, s.h)) {
-        return true
-      }
-      if (!isInScreenVerticalBand(s.y, s.h) || isMenu(s.x, s.y, s.w, s.h)) return false
-      const xStart = s.x / SB_CX
-      const xEnd = (s.x + Math.max(s.w, SB_CX * 0.02)) / SB_CX
-      return xEnd > 0.10 && xStart < 0.80
+      return classifyShapeRegion(s.x, s.y, s.w, s.h) === 'screen' && !isMenu(s.x, s.y, s.w, s.h)
     })
     .sort((a, b) => a.y - b.y || a.x - b.x)
     .map(rawShapeToBox)
 }
 
-function toScreenBoxes(shapes: RawShape[]): SlideTextBox[] {
+function isNonLearningExcluded(s: RawShape): boolean {
+  const region = classifyShapeRegion(s.x, s.y, s.w, s.h)
+  return (
+    region === 'desc' ||
+    region === 'narration' ||
+    isLayoutChrome(s) ||
+    isDirectorNote(s.text)
+  )
+}
+
+function toScreenBoxes(shapes: RawShape[], slideType: SlideType): SlideTextBox[] {
+  if (isNonLearningLayout(slideType)) {
+    const seenText = new Set<string>()
+    return shapes
+      .filter((s) => {
+        const text = s.text.trim()
+        if (!text || isNonLearningExcluded(s)) return false
+        if (seenText.has(text)) return false
+        seenText.add(text)
+        return true
+      })
+      .sort((a, b) => a.y - b.y || a.x - b.x)
+      .map((s, i) => rawShapeToBox(s, i))
+  }
+
   const primary = shapes
     .filter(
       (s) =>
-        overlapsScreenContent(s.x, s.y, s.w, s.h) && !isScreenTextExcluded(s),
+        s.text.trim() &&
+        classifyShapeRegion(s.x, s.y, s.w, s.h) === 'screen' &&
+        !isScreenTextExcluded(s),
     )
     .sort((a, b) => a.y - b.y || a.x - b.x)
-    .map(rawShapeToBox)
+    .map((s, i) => rawShapeToBox(s, i))
 
   if (primary.length > 0) return primary
   return findFallbackScreenText(shapes)
@@ -419,36 +707,22 @@ function findSpTree(root: Element): Element | null {
   return firstChildByLocalName(root, 'spTree')
 }
 
-function parseSlideXml(xml: string, slideNum: number): ParsedSlide | null {
-  const doc = new DOMParser().parseFromString(xml, 'application/xml')
-  const spTree = findSpTree(doc.documentElement)
-  const shapes = spTree ? extractShapes(spTree) : []
+function parseSlideWithShapes(
+  shapes: RawShape[],
+  slideNum: number,
+  totalSlides: number,
+): ParsedSlide {
+  const slideType = classifySlideType(shapes, slideNum, totalSlides)
 
-  const slideType = classifySlideType(shapes, slideNum)
-  if (slideType === 'guide') return null
-
-  const snShapes = shapes.filter((s) => isScreenNum(s.x, s.y, s.w, s.h))
   const cnShapes = shapes.filter((s) => isCourseName(s.x, s.y, s.w, s.h))
   const chShapes = shapes.filter((s) => isChapterName(s.x, s.y, s.w, s.h))
-  const descShapes = shapes.filter((s) => isScreenDesc(s.x, s.y, s.w, s.h))
+  const descShapes = shapes.filter((s) => isInScreenDescRegion(s.x, s.y, s.w, s.h))
   const imgShapes = shapes.filter((s) => isImageNum(s.x, s.y, s.w, s.h))
-  const narShapes = shapes.filter((s) => isNarration(s.x, s.y, s.w, s.h))
 
-  const screenNum =
-    snShapes
-      .filter(
-        (s) =>
-          s.text.length < 15 && !s.text.includes('페이지') && !s.text.includes(')'),
-      )
-      .map((s) => s.text)
-      .join(' ')
-      .trim() || null
+  const screenNum = buildScreenNum(shapes)
 
   const screenDesc =
     descShapes
-      .filter(
-        (s) => s.text !== '-' && !/^\d{2}_\d{2}$/.test(s.text) && s.y / SB_CY < 0.63,
-      )
       .map((s) => s.text)
       .join('\n')
       .trim() || null
@@ -460,15 +734,8 @@ function parseSlideXml(xml: string, slideNum: number): ParsedSlide | null {
       .join(', ')
       .trim() || null
 
-  const screenBoxes = toScreenBoxes(shapes)
-
-  const narration =
-    narShapes
-      .map((s) => s.text)
-      .join('\n')
-      .trim() ||
-    findFallbackNarration(shapes) ||
-    null
+  const screenBoxes = toScreenBoxes(shapes, slideType)
+  const narration = collectNarration(shapes)
 
   const courseName =
     cnShapes
@@ -521,9 +788,9 @@ export async function parsePptx(
   data: ArrayBuffer | Blob,
   onProgress?: (progress: ParseProgress) => void,
 ): Promise<ParsedSlide[]> {
-  const zip = await JSZip.loadAsync(data)
+  const bundle = await createPptxBundle(data)
   const slidePaths = sortSlidePaths(
-    Object.keys(zip.files).filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path)),
+    Object.keys(bundle.zip.files).filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path)),
   )
 
   const slides: ParsedSlide[] = []
@@ -531,9 +798,8 @@ export async function parsePptx(
 
   for (let i = 0; i < slidePaths.length; i++) {
     const slideNum = i + 1
-    const xml = await zip.file(slidePaths[i])!.async('string')
-    const parsed = parseSlideXml(xml, slideNum)
-    if (parsed) slides.push(parsed)
+    const shapes = await getMergedShapesForSlide(bundle, slideNum)
+    slides.push(parseSlideWithShapes(shapes, slideNum, total))
 
     onProgress?.({ current: i + 1, total, phase: 'parsing' })
 
@@ -543,6 +809,23 @@ export async function parsePptx(
   }
 
   return slides
+}
+
+export async function parseSingleSlide(
+  data: ArrayBuffer | Blob,
+  slideNum: number,
+): Promise<ParsedSlide> {
+  const bundle = await createPptxBundle(data)
+  const slidePaths = sortSlidePaths(
+    Object.keys(bundle.zip.files).filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path)),
+  )
+  const total = slidePaths.length
+  const path = `ppt/slides/slide${slideNum}.xml`
+  if (!bundle.zip.file(path)) {
+    throw new Error(`슬라이드 ${slideNum}을(를) 찾을 수 없습니다. (총 ${total}장)`)
+  }
+  const shapes = await getMergedShapesForSlide(bundle, slideNum)
+  return parseSlideWithShapes(shapes, slideNum, total)
 }
 
 export const SLIDE_TYPE_LABELS: Record<SlideType, string> = {

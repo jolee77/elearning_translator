@@ -135,15 +135,15 @@ isNarration:   y/CY >= 0.78                   // 하단 나레이션 (또는 y 0
 DB 컬럼 `slides.screen_text`는 **text** 타입이며 JSON 문자열로 저장된다.
 읽기/쓰기 시 `normalizeScreenText()` / `serializeScreenTextForDb()`로 배열 ↔ 문자열 변환.
 
-슬라이드 타입 분류:
-- guide: slideNum <= 9 (가이드 슬라이드, 처리 제외)
-- intro: 화면번호에 'INTRO' 또는 '01' 패턴
-- divider: 화면번호 또는 슬라이드 내 임의 텍스트에 '간지' 포함 (예: 슬라이드 29)
-- outro: 'OUTRO' 또는 '아웃트로'
+슬라이드 타입 분류 (슬라이드 번호가 아닌 화면번호·본문 패턴 기준):
+- intro: 1장 또는 화면번호 INTRO / xx_01 패턴
+- divider: 2~3장(총 5장 초과 시) 또는 본문에 '간지'
+- outro: OUTRO / 아웃트로
 - quiz: '문제풀기'
 - apply: '적용하기'
 - lesson: 화면번호 xx_xx 패턴
 - content: 나머지
+- guide: 레거시 타입 (자동 분류하지 않음, DB에 guide로 저장된 기존 데이터 호환용)
 
 ## VN PPTX 생성 로직 (중요)
 KO PPTX를 기반으로 번역 박스를 추가하는 방식.
@@ -168,7 +168,6 @@ KO PPTX를 기반으로 번역 박스를 추가하는 방식.
 - 폰트: sz=원본동일, lang=vi-VN, color=0033CC
 
 번역 대상 텍스트 박스 조건:
-- 가이드/배경 슬라이드 제외 (slideNum <= 9)
 - #숫자 만 있는 박스 제외
 - 빈 박스 제외
 - 과정명/회차명 등 고정 UI 제외 (y/CY < 0.05)
