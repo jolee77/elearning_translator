@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, startTransition } from 'react'
 import {
   SLIDE_TYPE_LABELS,
+  formatNarration,
   formatScreenText,
+  normalizeNarration,
+  parseNarrationInput,
   parseScreenTextInput,
 } from '../../lib/pptxParser'
 import { downloadExtractionXlsx } from '../../lib/xlsxGenerator'
@@ -137,7 +140,7 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
   }, [page, totalPages])
 
   const missingNarrationSlides = useMemo(
-    () => localSlides.filter((s) => !s.narration?.trim()),
+    () => localSlides.filter((s) => !formatNarration(s.narration).trim()),
     [localSlides],
   )
 
@@ -156,7 +159,7 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
           return { ...slide, screen_text: parseScreenTextInput(value, slide.screen_text) }
         }
         if (field === 'narration') {
-          return { ...slide, narration: value || null }
+          return { ...slide, narration: parseNarrationInput(value, slide.narration) }
         }
         return { ...slide, screen_num: value || null }
       }),
@@ -323,7 +326,8 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
               </thead>
               <tbody>
                 {pagedSlides.map((slide) => {
-                  const noNarration = !slide.narration?.trim()
+                  const narrationBoxes = normalizeNarration(slide.narration)
+                  const noNarration = !formatNarration(slide.narration).trim()
                   return (
                     <tr
                       key={slide.id}
@@ -358,17 +362,39 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <textarea
-                          value={slide.narration ?? ''}
-                          onChange={(e) =>
-                            updateLocalSlide(slide.id, 'narration', e.target.value)
-                          }
-                          rows={3}
-                          placeholder={noNarration ? '나레이션 없음' : ''}
-                          className={`w-full rounded border px-2 py-1 text-xs focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 ${
-                            noNarration ? 'border-amber-300 bg-amber-50' : 'border-gray-200'
-                          }`}
-                        />
+                        <div className="space-y-2">
+                          {narrationBoxes?.length ? (
+                            narrationBoxes.map((box, boxIndex) => (
+                              <textarea
+                                key={box.id || boxIndex}
+                                value={box.text}
+                                onChange={(e) => {
+                                  const next = narrationBoxes.map((item, i) =>
+                                    i === boxIndex ? { ...item, text: e.target.value } : item,
+                                  )
+                                  setLocalSlides((prev) =>
+                                    prev.map((s) =>
+                                      s.id === slide.id ? { ...s, narration: next } : s,
+                                    ),
+                                  )
+                                }}
+                                rows={3}
+                                style={
+                                  box.font_size ? { fontSize: `${box.font_size}pt` } : undefined
+                                }
+                                className="nb-textarea w-full text-xs"
+                              />
+                            ))
+                          ) : (
+                            <textarea
+                              value=""
+                              readOnly
+                              rows={3}
+                              placeholder="나레이션 없음"
+                              className="nb-textarea w-full text-xs border-amber-300 bg-amber-50"
+                            />
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )

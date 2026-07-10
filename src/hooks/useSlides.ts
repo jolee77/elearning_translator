@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { parsePptx, normalizeScreenText, type ParseProgress, type ParsedSlide } from '../lib/pptxParser'
+import {
+  parsePptx,
+  normalizeNarration,
+  normalizeScreenText,
+  type ParseProgress,
+  type ParsedSlide,
+} from '../lib/pptxParser'
 import { supabase } from '../lib/supabase'
 import type { Slide } from '../types'
 import { STORAGE_BUCKET } from './useProject'
@@ -19,6 +25,7 @@ function normalizeSlide(slide: Slide): Slide {
   return {
     ...slide,
     screen_text: normalizeScreenText(slide.screen_text),
+    narration: normalizeNarration(slide.narration),
   }
 }
 
@@ -29,6 +36,12 @@ function normalizeSlides(slides: Slide[]): Slide[] {
 function serializeScreenTextForDb(boxes: Slide['screen_text']): string | null {
   if (!boxes?.length) return null
   return JSON.stringify(boxes)
+}
+
+function serializeNarrationForDb(boxes: Slide['narration']): string | null {
+  const normalized = normalizeNarration(boxes)
+  if (!normalized?.length) return null
+  return JSON.stringify(normalized)
 }
 
 export function useSlides(projectId: string | undefined) {
@@ -66,7 +79,7 @@ function toSlideRows(projectId: string, parsed: ParsedSlide[]): SlideInsert[] {
     screen_text: serializeScreenTextForDb(slide.screen_text) as unknown as SlideInsert['screen_text'],
     screen_desc: slide.screen_desc,
     image_nums: slide.image_nums,
-    narration: slide.narration,
+    narration: serializeNarrationForDb(slide.narration) as unknown as SlideInsert['narration'],
   }))
 }
 
@@ -223,7 +236,7 @@ export function useBulkUpdateSlides() {
             screen_text: serializeScreenTextForDb(slide.screen_text),
             screen_desc: slide.screen_desc,
             image_nums: slide.image_nums,
-            narration: slide.narration,
+            narration: serializeNarrationForDb(slide.narration),
           })
           .eq('id', slide.id)
           .select()
@@ -289,7 +302,7 @@ export function useCompleteExtraction() {
             slide_type: slide.slide_type,
             screen_num: slide.screen_num,
             screen_text: serializeScreenTextForDb(slide.screen_text),
-            narration: slide.narration,
+            narration: serializeNarrationForDb(slide.narration),
           })
           .eq('id', slide.id)
 

@@ -1,5 +1,5 @@
 import type { Slide, SpellingIssue, SpellingResult } from '../types'
-import { formatScreenText, normalizeScreenText } from './pptxParser'
+import { formatNarration, formatScreenText, normalizeScreenText } from './pptxParser'
 
 export type SpellableField = { field_key: string; text: string }
 
@@ -34,8 +34,9 @@ export function buildSpellableFields(slide: Slide): SpellableField[] {
     }
   }
 
-  if (slide.narration?.trim()) {
-    fields.push({ field_key: 'narration', text: slide.narration.trim() })
+  const narrationText = formatNarration(slide.narration).trim()
+  if (narrationText) {
+    fields.push({ field_key: 'narration', text: narrationText })
   }
 
   return fields

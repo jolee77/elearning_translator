@@ -131,9 +131,11 @@ isNarration:   y/CY >= 0.78                   // 하단 나레이션 (또는 y 0
   - 연출 지시 문구(「텍스트·이미지 함께 제시」, 사운드 스트리밍 등)는 `isDirectorNote`로 제외
   - 후보가 여러 개면 가장 긴 본문을 나레이션으로 선택
 
-### screen_text 저장 형식
-DB 컬럼 `slides.screen_text`는 **text** 타입이며 JSON 문자열로 저장된다.
-읽기/쓰기 시 `normalizeScreenText()` / `serializeScreenTextForDb()`로 배열 ↔ 문자열 변환.
+### screen_text / narration 저장 형식
+DB 컬럼 `slides.screen_text`, `slides.narration`은 **text** 타입이며 JSON 문자열(`SlideTextBox[]`)로 저장된다.
+읽기/쓰기 시 `normalizeScreenText()` / `normalizeNarration()` 및 serialize 헬퍼 사용.
+
+슬라이드 마스터 텍스트(라벨·placeholder)는 추출·번역 대상에서 제외한다. 레이아웃+슬라이드만 병합한다.
 
 슬라이드 타입 분류 (슬라이드 번호가 아닌 화면번호·본문 패턴 기준):
 - intro: 1장 또는 화면번호 INTRO / xx_01 패턴

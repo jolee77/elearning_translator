@@ -1,5 +1,5 @@
 import type { Slide } from '../types'
-import { normalizeScreenText } from './pptxParser'
+import { normalizeScreenText, parseNarrationInput } from './pptxParser'
 
 type SlideUpdate = Partial<
   Omit<Slide, 'id' | 'project_id' | 'slide_num' | 'created_at'>
@@ -11,7 +11,7 @@ export function applyFieldCorrection(
   correctedText: string,
 ): SlideUpdate {
   if (fieldKey === 'narration') {
-    return { narration: correctedText }
+    return { narration: parseNarrationInput(correctedText, slide.narration) }
   }
 
   const screenText = normalizeScreenText(slide.screen_text)

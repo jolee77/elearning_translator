@@ -15,7 +15,39 @@ export interface SlideRow {
   slide_type: string
   screen_num: string | null
   screen_text: SlideTextBox[] | string | null
-  narration: string | null
+  narration: SlideTextBox[] | string | null
+}
+
+export function normalizeNarration(
+  raw: SlideTextBox[] | string | null | undefined,
+): SlideTextBox[] | null {
+  if (raw == null) return null
+  if (Array.isArray(raw)) return raw.length > 0 ? raw : null
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed || trimmed === 'null') return null
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown
+        if (Array.isArray(parsed)) return parsed.length > 0 ? (parsed as SlideTextBox[]) : null
+      } catch {
+        // plain text fallback
+      }
+    }
+    return [{ id: '0', text: trimmed, x: 0, y: 0, w: 0, h: 0 }]
+  }
+
+  return null
+}
+
+export function formatNarration(narration: SlideTextBox[] | string | null): string {
+  const normalized = normalizeNarration(narration)
+  if (!normalized?.length) return ''
+  return normalized
+    .map((box) => String(box.text ?? '').trim())
+    .filter(Boolean)
+    .join('\n')
 }
 
 export function normalizeScreenText(
@@ -82,8 +114,9 @@ export function buildSpellingFields(slide: SlideRow): Array<{
     }
   }
 
-  if (slide.narration?.trim()) {
-    fields.push({ field_key: 'narration', text: slide.narration.trim() })
+  const narrationText = formatNarration(slide.narration).trim()
+  if (narrationText) {
+    fields.push({ field_key: 'narration', text: narrationText })
   }
 
   return fields
@@ -115,10 +148,11 @@ export function buildTranslationFieldKeys(slide: SlideRow): Array<{
     }
   }
 
-  if (slide.narration?.trim()) {
+  const narrationText = formatNarration(slide.narration).trim()
+  if (narrationText) {
     fields.push({
       field_key: NARRATION_FIELD_KEY,
-      ko_text: slide.narration.trim(),
+      ko_text: narrationText,
     })
   }
 

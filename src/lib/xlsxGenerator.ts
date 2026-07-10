@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import { SLIDE_TYPE_LABELS, formatScreenText } from './pptxParser'
+import { SLIDE_TYPE_LABELS, formatNarration, formatScreenText } from './pptxParser'
 import { NARRATION_FIELD_KEY } from './lang'
 import { fieldKeyLabel } from './slideFields'
 import type { ChangeLog, ChangeLogAction, Project, Slide, Translation } from '../types'
@@ -19,7 +19,7 @@ export function downloadExtractionXlsx(slides: Slide[], filename: string): void 
     유형: SLIDE_TYPE_LABELS[slide.slide_type],
     화면번호: slide.screen_num ?? '',
     화면텍스트: formatScreenText(slide.screen_text),
-    나레이션: slide.narration ?? '',
+    나레이션: formatNarration(slide.narration),
     과정명: slide.course_name ?? '',
     회차명: slide.chapter_name ?? '',
     화면설명: slide.screen_desc ?? '',

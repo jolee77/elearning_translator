@@ -100,7 +100,7 @@ export interface Slide {
   screen_text: SlideTextBox[] | null
   screen_desc: string | null
   image_nums: string | null
-  narration: string | null
+  narration: SlideTextBox[] | string | null
   created_at: string
 }
 

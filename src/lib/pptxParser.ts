@@ -14,7 +14,7 @@ export interface ParsedSlide {
   screen_text: SlideTextBox[] | null
   screen_desc: string | null
   image_nums: string | null
-  narration: string | null
+  narration: SlideTextBox[] | null
 }
 
 interface RawShape {
@@ -91,10 +91,11 @@ function extractBodyText(txBody: Element): string {
 }
 
 function extractFontSize(txBody: Element): number | undefined {
-  const sz = firstChildByLocalName(txBody, 'sz')
-  if (!sz) return undefined
-  const val = sz.getAttribute('val')
-  return val ? parseInt(val, 10) / 100 : undefined
+  for (const sz of elementsByLocalName(txBody, 'sz')) {
+    const val = sz.getAttribute('val')
+    if (val) return parseInt(val, 10) / 100
+  }
+  return undefined
 }
 
 function getShapeXfrm(shape: Element): Element | null {
@@ -298,7 +299,6 @@ async function getMergedShapesForSlide(bundle: PptxBundle, slideNum: number): Pr
 
   const slideShapes = await loadShapesFromPart(bundle, slidePath)
   let layoutShapes: RawShape[] = []
-  let masterShapes: RawShape[] = []
 
   const slideRelsFile = bundle.zip.file(slideRelsPath)
   if (slideRelsFile) {
@@ -307,22 +307,11 @@ async function getMergedShapesForSlide(bundle: PptxBundle, slideNum: number): Pr
     if (layoutTarget) {
       const layoutPath = resolvePartPath(slideRelsPath, layoutTarget)
       layoutShapes = await loadShapesFromPart(bundle, layoutPath)
-
-      const layoutName = layoutPath.split('/').pop()!
-      const layoutRelsPath = `ppt/slideLayouts/_rels/${layoutName}.rels`
-      const layoutRelsFile = bundle.zip.file(layoutRelsPath)
-      if (layoutRelsFile) {
-        const layoutRelsXml = await layoutRelsFile.async('string')
-        const masterTarget = findRelationshipTarget(layoutRelsXml, 'slideMaster')
-        if (masterTarget) {
-          const masterPath = resolvePartPath(layoutRelsPath, masterTarget)
-          masterShapes = await loadShapesFromPart(bundle, masterPath)
-        }
-      }
     }
   }
 
-  return mergeInheritedShapes(masterShapes, layoutShapes, slideShapes)
+  // 슬라이드 마스터 텍스트(라벨·placeholder)는 번역·추출 대상에서 제외
+  return mergeInheritedShapes([], layoutShapes, slideShapes)
 }
 
 async function createPptxBundle(data: ArrayBuffer | Blob): Promise<PptxBundle> {
@@ -525,13 +514,13 @@ function isDirectorNote(text: string): boolean {
   return false
 }
 
-function findFallbackNarration(shapes: RawShape[]): string | null {
+function findFallbackNarrationShape(shapes: RawShape[]): RawShape | null {
   const candidates = shapes.filter(
     (s) =>
       classifyShapeRegion(s.x, s.y, s.w, s.h) === 'narration' &&
       !isNarrationUILayoutLabel(s) &&
       !isDirectorNote(s.text) &&
-      !isSyncMarkerOnly(s.text),
+      s.text.trim().length > 0,
   )
   if (candidates.length === 0) return null
 
@@ -541,20 +530,52 @@ function findFallbackNarration(shapes: RawShape[]): string | null {
   return (
     pool
       .slice()
-      .sort((a, b) => b.text.length - a.text.length)[0]
-      ?.text.trim() || null
+      .sort((a, b) => b.text.length - a.text.length)[0] ?? null
   )
 }
 
-function collectNarration(shapes: RawShape[]): string | null {
-  const parts: string[] = []
-  const seen = new Set<string>()
+function referenceScreenMetrics(
+  screenBoxes: SlideTextBox[],
+): { w: number; h: number; font_size?: number } {
+  const ref = screenBoxes.find((b) => b.w > 0 && b.h > 0) ?? screenBoxes[0]
+  if (!ref) return { w: 0, h: 0 }
+  return {
+    w: ref.w,
+    h: ref.h,
+    font_size: screenBoxes.find((b) => b.font_size)?.font_size ?? ref.font_size,
+  }
+}
 
-  const addPart = (text: string) => {
-    const t = text.trim()
-    if (!t || seen.has(t) || isDirectorNote(t) || isSyncMarkerOnly(t)) return
+function narrationShapeToBox(
+  s: RawShape,
+  index: number,
+  ref: { w: number; h: number; font_size?: number },
+): SlideTextBox {
+  const hasRef = ref.w > 0 && ref.h > 0
+  return {
+    id: String(index),
+    text: s.text,
+    x: s.x,
+    y: s.y,
+    w: hasRef ? ref.w : s.w,
+    h: hasRef ? ref.h : s.h,
+    font_size: ref.font_size ?? s.fontSize,
+  }
+}
+
+function collectNarrationBoxes(
+  shapes: RawShape[],
+  screenBoxes: SlideTextBox[],
+): SlideTextBox[] | null {
+  const ref = referenceScreenMetrics(screenBoxes)
+  const seen = new Set<string>()
+  const boxes: SlideTextBox[] = []
+
+  const addShape = (s: RawShape) => {
+    const t = s.text.trim()
+    if (!t || isDirectorNote(t) || seen.has(t)) return
     seen.add(t)
-    parts.push(t)
+    boxes.push(narrationShapeToBox(s, boxes.length, ref))
   }
 
   for (const s of shapes) {
@@ -562,16 +583,16 @@ function collectNarration(shapes: RawShape[]): string | null {
       classifyShapeRegion(s.x, s.y, s.w, s.h) === 'narration' &&
       !isNarrationUILayoutLabel(s)
     ) {
-      addPart(s.text)
+      addShape(s)
     }
   }
 
-  if (parts.length === 0) {
-    const fallback = findFallbackNarration(shapes)
-    if (fallback) addPart(fallback)
+  if (boxes.length === 0) {
+    const fallback = findFallbackNarrationShape(shapes)
+    if (fallback) addShape(fallback)
   }
 
-  return parts.length > 0 ? parts.join('\n') : null
+  return boxes.length > 0 ? boxes : null
 }
 
 /** 슬라이드 번호가 아닌 화면번호·본문 패턴으로 유형 판별 */
@@ -735,7 +756,7 @@ function parseSlideWithShapes(
       .trim() || null
 
   const screenBoxes = toScreenBoxes(shapes, slideType)
-  const narration = collectNarration(shapes)
+  const narration = collectNarrationBoxes(shapes, screenBoxes)
 
   const courseName =
     cnShapes
@@ -885,6 +906,66 @@ export function parseScreenTextInput(
   if (!trimmed) return null
 
   const normalizedExisting = normalizeScreenText(existing)
+
+  if (normalizedExisting?.length) {
+    const [first, ...rest] = normalizedExisting
+    return [
+      { ...first, text: trimmed },
+      ...rest.map((box) => ({ ...box, text: '' })),
+    ]
+  }
+
+  return [{ id: '0', text: trimmed, x: 0, y: 0, w: 0, h: 0 }]
+}
+
+export function normalizeNarration(
+  raw: SlideTextBox[] | string | null | unknown,
+): SlideTextBox[] | null {
+  if (raw == null) return null
+
+  if (Array.isArray(raw)) {
+    return raw.length > 0 ? (raw as SlideTextBox[]) : null
+  }
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed || trimmed === 'null') return null
+
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown
+        if (Array.isArray(parsed)) {
+          return parsed.length > 0 ? (parsed as SlideTextBox[]) : null
+        }
+      } catch {
+        // plain text fallback
+      }
+    }
+
+    return [{ id: '0', text: trimmed, x: 0, y: 0, w: 0, h: 0 }]
+  }
+
+  return null
+}
+
+export function formatNarration(boxes: SlideTextBox[] | string | null | unknown): string {
+  const normalized = normalizeNarration(boxes)
+  if (!normalized?.length) return ''
+
+  return normalized
+    .map((box) => (typeof box === 'object' && box && 'text' in box ? String(box.text ?? '') : ''))
+    .filter(Boolean)
+    .join('\n')
+}
+
+export function parseNarrationInput(
+  value: string,
+  existing: SlideTextBox[] | string | null,
+): SlideTextBox[] | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const normalizedExisting = normalizeNarration(existing)
 
   if (normalizedExisting?.length) {
     const [first, ...rest] = normalizedExisting
