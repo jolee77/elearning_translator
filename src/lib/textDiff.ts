@@ -28,15 +28,20 @@ export function normalizeLineBreakWhitespace(text: string): string {
   return text.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]*/g, '\n')
 }
 
+/** 맞춤법 비교용 — 줄바꿈을 문장 나눔으로 취급해 공백 차이 무시 */
+export function normalizeScreenTextForSpellingCompare(text: string): string {
+  return normalizeLineBreakWhitespace(text)
+    .replace(/\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /** 줄바꿈·행 끝 공백만 다른 경우 — 띄어쓰기 오류로 보지 않음 */
 export function isOnlyLineBreakWhitespaceDiff(a: string, b: string): boolean {
   if (a === b) return true
-
-  const na = normalizeLineBreakWhitespace(a)
-  const nb = normalizeLineBreakWhitespace(b)
-  if (na.replace(/\n/g, '') !== nb.replace(/\n/g, '')) return false
-
-  return a.replace(/\s/g, '') === b.replace(/\s/g, '')
+  return (
+    normalizeScreenTextForSpellingCompare(a) === normalizeScreenTextForSpellingCompare(b)
+  )
 }
 
 export function detectSpellingChangeKind(

@@ -9,14 +9,18 @@ export function normalizeLineBreakWhitespace(text: string): string {
   return text.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]*/g, '\n')
 }
 
+export function normalizeScreenTextForSpellingCompare(text: string): string {
+  return normalizeLineBreakWhitespace(text)
+    .replace(/\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function isOnlyLineBreakWhitespaceDiff(a: string, b: string): boolean {
   if (a === b) return true
-
-  const na = normalizeLineBreakWhitespace(a)
-  const nb = normalizeLineBreakWhitespace(b)
-  if (na.replace(/\n/g, '') !== nb.replace(/\n/g, '')) return false
-
-  return a.replace(/\s/g, '') === b.replace(/\s/g, '')
+  return (
+    normalizeScreenTextForSpellingCompare(a) === normalizeScreenTextForSpellingCompare(b)
+  )
 }
 
 export function sanitizeSpellingField(
