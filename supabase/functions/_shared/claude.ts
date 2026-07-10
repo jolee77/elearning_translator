@@ -33,6 +33,23 @@ export async function callClaude(
 
   if (!response.ok) {
     const body = await response.text()
+    try {
+      const parsed = JSON.parse(body) as {
+        error?: { type?: string; message?: string }
+      }
+      const errType = parsed.error?.type
+      if (response.status === 401 || errType === 'authentication_error') {
+        throw new HttpError(
+          401,
+          'Claude API 키가 유효하지 않습니다. 관리자 설정(/admin/settings)에서 Anthropic API 키를 확인하고 다시 저장해 주세요.',
+        )
+      }
+      if (parsed.error?.message) {
+        throw new HttpError(response.status === 429 ? 429 : 502, `Claude API 오류: ${parsed.error.message}`)
+      }
+    } catch (e) {
+      if (e instanceof HttpError) throw e
+    }
     throw new HttpError(response.status === 429 ? 429 : 502, `Claude API 오류: ${body}`)
   }
 

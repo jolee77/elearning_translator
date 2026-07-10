@@ -48,7 +48,14 @@ export function useUpdateSettings() {
       ]
 
       if (input.claudeApiKey?.trim()) {
-        rows.push({ key: 'claude_api_key', value: input.claudeApiKey.trim() })
+        const key = input.claudeApiKey.trim().replace(/^["']|["']$/g, '')
+        if (!key.startsWith('sk-ant-')) {
+          throw new Error('Claude API 키는 sk-ant-로 시작해야 합니다. Anthropic 콘솔에서 키 전체를 복사해 주세요.')
+        }
+        if (key.length < 40) {
+          throw new Error('Claude API 키가 너무 짧습니다. 키 전체가 복사되었는지 확인해 주세요.')
+        }
+        rows.push({ key: 'claude_api_key', value: key })
       }
 
       const { error } = await supabase

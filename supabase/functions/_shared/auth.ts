@@ -46,6 +46,25 @@ export async function authenticateRequest(req: Request): Promise<{
   }
 }
 
+export function normalizeClaudeApiKey(raw: string): string {
+  return raw.trim().replace(/^["']|["']$/g, '')
+}
+
+export function assertValidClaudeApiKey(key: string): void {
+  if (!key) {
+    throw new HttpError(400, 'Claude API 키가 설정되지 않았습니다. 관리자 설정에서 등록해 주세요.')
+  }
+  if (!key.startsWith('sk-ant-')) {
+    throw new HttpError(
+      400,
+      'Claude API 키 형식이 올바르지 않습니다. Anthropic 콘솔에서 발급한 sk-ant-api03-... 키 전체를 복사해 등록해 주세요.',
+    )
+  }
+  if (key.length < 40) {
+    throw new HttpError(400, 'Claude API 키가 너무 짧습니다. 키 전체가 복사되었는지 확인해 주세요.')
+  }
+}
+
 export async function getClaudeApiKey(serviceClient: SupabaseClient): Promise<string> {
   const { data, error } = await serviceClient
     .from('settings')
@@ -61,7 +80,9 @@ export async function getClaudeApiKey(serviceClient: SupabaseClient): Promise<st
     throw new HttpError(400, 'Claude API 키가 설정되지 않았습니다. 관리자 설정에서 등록해 주세요.')
   }
 
-  return data.value
+  const key = normalizeClaudeApiKey(data.value)
+  assertValidClaudeApiKey(key)
+  return key
 }
 
 export async function verifyProjectAccess(
