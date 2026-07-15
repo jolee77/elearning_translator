@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AutoResizeTextarea } from '../components/ui/AutoResizeTextarea'
 import { ProgressBar } from '../components/ui/ProgressBar'
@@ -18,6 +18,23 @@ function isItemReviewed(item: ExpertReviewItem): boolean {
   return item.status !== 'pending'
 }
 
+/** 현재 항목 이후(순환)에서 다음 미검토 항목 id. 없으면 null */
+function findNextPendingId(
+  items: ExpertReviewItem[],
+  currentId: string,
+): string | null {
+  const currentIndex = items.findIndex((i) => i.id === currentId)
+  if (currentIndex < 0) return null
+
+  for (let i = currentIndex + 1; i < items.length; i++) {
+    if (!isItemReviewed(items[i])) return items[i].id
+  }
+  for (let i = 0; i < currentIndex; i++) {
+    if (!isItemReviewed(items[i])) return items[i].id
+  }
+  return null
+}
+
 export function ExpertReviewPage() {
   const { token } = useParams<{ token: string }>()
   const { showToast } = useToast()
@@ -28,6 +45,7 @@ export function ExpertReviewPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [localTexts, setLocalTexts] = useState<Record<string, string>>({})
   const [localComments, setLocalComments] = useState<Record<string, string>>({})
+  const selectedRowRef = useRef<HTMLTableRowElement | null>(null)
 
   const slideMap = useMemo(
     () => new Map(data?.slides.map((s) => [s.id, s]) ?? []),
@@ -45,6 +63,9 @@ export function ExpertReviewPage() {
   }, [data?.items, slideMap])
 
   const selectedItem = sortedItems.find((i) => i.id === selectedId) ?? null
+  const nextPendingId = selectedItem
+    ? findNextPendingId(sortedItems, selectedItem.id)
+    : null
 
   useEffect(() => {
     if (!data?.items) return
@@ -61,9 +82,14 @@ export function ExpertReviewPage() {
 
   useEffect(() => {
     if (sortedItems.length > 0 && !selectedId) {
-      setSelectedId(sortedItems[0].id)
+      const firstPending = sortedItems.find((i) => !isItemReviewed(i))
+      setSelectedId(firstPending?.id ?? sortedItems[0].id)
     }
   }, [sortedItems, selectedId])
+
+  useEffect(() => {
+    selectedRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [selectedId])
 
   const stats = getExpertReviewStats(sortedItems)
   const isReviewDone = data?.review.status === 'done'
@@ -87,6 +113,8 @@ export function ExpertReviewPage() {
   const handleSaveItem = async (item: ExpertReviewItem) => {
     if (!token) return
 
+    const advanceToId = findNextPendingId(sortedItems, item.id)
+
     try {
       await saveItem.mutateAsync({
         token,
@@ -95,7 +123,12 @@ export function ExpertReviewPage() {
         viText: localTexts[item.id] ?? item.vi_text,
         comment: localComments[item.id] || undefined,
       })
-      showToast('검토가 저장되었습니다.', 'success')
+      if (advanceToId) {
+        setSelectedId(advanceToId)
+        showToast('저장되었습니다. 다음 항목으로 이동합니다.', 'success')
+      } else {
+        showToast('검토가 저장되었습니다. 모든 항목을 검토했습니다.', 'success')
+      }
     } catch (err) {
       showToast(err instanceof Error ? err.message : '저장에 실패했습니다.', 'error')
     }
@@ -211,6 +244,7 @@ export function ExpertReviewPage() {
                       return (
                         <tr
                           key={item.id}
+                          ref={isSelected ? selectedRowRef : undefined}
                           onClick={() => setSelectedId(item.id)}
                           className={`cursor-pointer ${isSelected ? 'bg-[#e6f4ff]' : 'hover:bg-gray-50'}`}
                         >
@@ -316,7 +350,11 @@ export function ExpertReviewPage() {
                           className="nb-btn-primary"
                         >
                           {saveItem.isPending && <Spinner className="text-white" />}
-                          {saveItem.isPending ? '저장 중...' : '완료'}
+                          {saveItem.isPending
+                            ? '저장 중...'
+                            : nextPendingId
+                              ? '완료 → 다음'
+                              : '완료'}
                         </button>
                       )}
                     </div>
