@@ -120,6 +120,42 @@ export function useUpdateProfileRole() {
   })
 }
 
+export interface UpdateUserInput {
+  userId: string
+  name: string
+  email: string
+  role: UserRole
+  password?: string
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: UpdateUserInput): Promise<Profile> => {
+      const body: Record<string, string> = {
+        user_id: input.userId,
+        name: input.name.trim(),
+        email: input.email.trim(),
+        role: input.role,
+      }
+
+      if (input.password?.trim()) {
+        body.password = input.password
+      }
+
+      const result = await invokeEdgeFunction<{ success: boolean; profile: Profile }>(
+        'update-user',
+        body,
+      )
+      return result.profile
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: profilesQueryKey })
+    },
+  })
+}
+
 export function useRegisterUser() {
   const queryClient = useQueryClient()
 

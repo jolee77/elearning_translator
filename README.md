@@ -98,14 +98,16 @@ DB 마이그레이션: `supabase/migrations/20250710100000_spelling_committed.sq
 - **5단계 UI**: 번역·역번역 검증 Step 3 통합 (`TranslationVerificationStep`)
 - **싱크 마커**: 나레이션 `#1` `#2` 유지, 화면텍스트 추출 시 `#N` 단독 박스 제외
 - **전문가 검증**: 표+상세 UI, 역번역 표시, 완료 버튼 단일화
-- **관리자**: 프로젝트 삭제, 사용자 등록(비밀번호+역할)
+- **관리자**: 프로젝트 삭제, 사용자 등록·정보 수정(이름/이메일/비밀번호/역할)
 - **nextBMS 디자인**: `nb-*` 유틸 클래스, Layout 사이드바 스타일
 
 ### Supabase 배포 (완료)
 - 마이그레이션 `20250624180000_workflow_updates.sql` 적용됨
 - 마이그레이션 `20250624200000_fix_gen_random_bytes.sql` 적용됨
 - 마이그레이션 `20250624210000_profiles_admin_access.sql` 적용됨
+- 마이그레이션 `20250710100000_spelling_committed.sql` 적용됨 (`committed_to_slide`)
 - `register-user` Edge Function 배포됨 (중복 이메일 복구 포함)
+- `update-user` Edge Function 배포됨 (관리자 사용자 정보 수정)
 
 ### 이전 (2026-06)
 - PPTX 추출: `spTree` 기준 텍스트 도형 수집, 화면텍스트 JSON 파싱

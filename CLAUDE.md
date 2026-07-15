@@ -102,7 +102,7 @@ uploaded → extracted → spelling → spelling_done → translating → transl
   Step5: 완료 → 다운로드
 /review/:token          전문가 검증 (로그인 없이 토큰, 역번역 포함)
 /admin/settings         관리자 - API 키 설정
-/admin/users            관리자 - 사용자 등록 (초대 아님)
+/admin/users            관리자 - 사용자 등록·정보 수정 (이름/이메일/비밀번호/역할)
 /admin/projects         관리자 - 전체 프로젝트 현황 + 삭제
 ```
 

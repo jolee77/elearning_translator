@@ -24,6 +24,7 @@ import {
 } from '../../hooks/useSpelling'
 import { useSlides } from '../../hooks/useSlides'
 import type { ChunkProgress } from '../../lib/chunkProgress'
+import { getErrorMessage } from '../../lib/errors'
 import { fieldKeyLabel } from '../../lib/slideFields'
 import {
   buildSpellableFields,
@@ -236,7 +237,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       showToast(message, 'success')
     } catch (err) {
       setCheckPhase('error')
-      showToast(err instanceof Error ? err.message : '맞춤법 검사에 실패했습니다.', 'error')
+      showToast(getErrorMessage(err, '맞춤법 검사에 실패했습니다.'), 'error')
     } finally {
       setChunkProgress(null)
     }
@@ -257,7 +258,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       setSelectedIds(new Set())
       showToast(`${targets.length}건을 변경으로 선택했습니다.`, 'success')
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
+      showToast(getErrorMessage(err, '처리에 실패했습니다.'), 'error')
     }
   }
 
@@ -276,7 +277,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       setSelectedIds(new Set())
       showToast(`${targets.length}건을 제외했습니다.`, 'success')
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
+      showToast(getErrorMessage(err, '처리에 실패했습니다.'), 'error')
     }
   }
 
@@ -288,7 +289,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       })
       showToast('변경으로 선택했습니다.', 'success')
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
+      showToast(getErrorMessage(err, '처리에 실패했습니다.'), 'error')
     }
   }
 
@@ -300,7 +301,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       })
       showToast('제외했습니다.', 'success')
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
+      showToast(getErrorMessage(err, '처리에 실패했습니다.'), 'error')
     }
   }
 
@@ -312,7 +313,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       })
       showToast('검토 선택을 취소했습니다.', 'success')
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '처리에 실패했습니다.', 'error')
+      showToast(getErrorMessage(err, '처리에 실패했습니다.'), 'error')
     }
   }
 
@@ -330,7 +331,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       })
       showToast(`${count}건이 슬라이드에 반영되었습니다.`, 'success')
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '슬라이드 반영에 실패했습니다.', 'error')
+      showToast(getErrorMessage(err, '슬라이드 반영에 실패했습니다.'), 'error')
     }
   }
 
@@ -348,7 +349,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       })
       showToast(`${count}건의 슬라이드 반영을 되돌렸습니다.`, 'success')
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '되돌리기에 실패했습니다.', 'error')
+      showToast(getErrorMessage(err, '되돌리기에 실패했습니다.'), 'error')
     }
   }
 
@@ -370,7 +371,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       showToast('맞춤법 검토가 완료되었습니다. 번역 단계로 진행할 수 있습니다.', 'success')
       onStepComplete?.()
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '완료 처리에 실패했습니다.', 'error')
+      showToast(getErrorMessage(err, '완료 처리에 실패했습니다.'), 'error')
     }
   }
 

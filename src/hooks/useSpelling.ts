@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { spellingCheck } from '../lib/claudeApi'
 import { type ChunkProgress, mergeChunkProgress } from '../lib/chunkProgress'
+import { normalizeNarration } from '../lib/pptxParser'
 import { applyFieldCorrection } from '../lib/slideFields'
 import {
   hasSpellingTextChanges,
@@ -9,6 +10,23 @@ import {
 import { supabase } from '../lib/supabase'
 import type { Slide, SpellingResult } from '../types'
 import { useAuth } from './useAuth'
+
+/** useSlides와 동일 — DB text 컬럼용 JSON 직렬화 */
+function prepareSlideFieldUpdatesForDb(
+  updates: Partial<Pick<Slide, 'screen_text' | 'narration'>>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...updates }
+  if (updates.screen_text !== undefined) {
+    payload.screen_text = updates.screen_text?.length
+      ? JSON.stringify(updates.screen_text)
+      : null
+  }
+  if (updates.narration !== undefined) {
+    const normalized = normalizeNarration(updates.narration)
+    payload.narration = normalized?.length ? JSON.stringify(normalized) : null
+  }
+  return payload
+}
 
 const spellingQueryKey = ['spelling_results'] as const
 /** Edge Function spelling-check BATCH_SIZE와 동일 */
@@ -161,17 +179,17 @@ async function commitSpellingResultToSlide(
 
   const { error: slideError } = await supabase
     .from('slides')
-    .update(updates)
+    .update(prepareSlideFieldUpdatesForDb(updates))
     .eq('id', slide.id)
 
-  if (slideError) throw slideError
+  if (slideError) throw new Error(slideError.message)
 
   const { error: resultError } = await supabase
     .from('spelling_results')
     .update({ committed_to_slide: true })
     .eq('id', result.id)
 
-  if (resultError) throw resultError
+  if (resultError) throw new Error(resultError.message)
 
   if (userId) {
     const { error: logError } = await supabase.from('change_logs').insert({
@@ -182,7 +200,7 @@ async function commitSpellingResultToSlide(
       metadata: { stage: 'spelling', spelling_result_id: result.id },
     })
 
-    if (logError) throw logError
+    if (logError) throw new Error(logError.message)
   }
 }
 
@@ -199,17 +217,17 @@ async function revertSpellingResultFromSlide(
 
   const { error: slideError } = await supabase
     .from('slides')
-    .update(updates)
+    .update(prepareSlideFieldUpdatesForDb(updates))
     .eq('id', slide.id)
 
-  if (slideError) throw slideError
+  if (slideError) throw new Error(slideError.message)
 
   const { error: resultError } = await supabase
     .from('spelling_results')
     .update({ committed_to_slide: false, applied: false, skipped: false })
     .eq('id', result.id)
 
-  if (resultError) throw resultError
+  if (resultError) throw new Error(resultError.message)
 
   if (userId) {
     const { error: logError } = await supabase.from('change_logs').insert({
@@ -220,7 +238,7 @@ async function revertSpellingResultFromSlide(
       metadata: { stage: 'spelling', spelling_result_id: result.id },
     })
 
-    if (logError) throw logError
+    if (logError) throw new Error(logError.message)
   }
 }
 
@@ -243,7 +261,7 @@ export function useApproveSpellingFix() {
         .update({ applied: true, skipped: false, committed_to_slide: false })
         .in('id', resultIds)
 
-      if (error) throw error
+      if (error) throw new Error(error.message)
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
@@ -270,7 +288,7 @@ export function useRejectSpellingFix() {
         .update({ skipped: true, applied: false, committed_to_slide: false })
         .in('id', resultIds)
 
-      if (error) throw error
+      if (error) throw new Error(error.message)
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
@@ -297,7 +315,7 @@ export function useResetSpellingReview() {
         .update({ applied: false, skipped: false, committed_to_slide: false })
         .in('id', resultIds)
 
-      if (error) throw error
+      if (error) throw new Error(error.message)
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
