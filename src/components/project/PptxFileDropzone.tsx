@@ -1,9 +1,35 @@
 import { useCallback, useState, type DragEvent } from 'react'
 
+/** Supabase Storage 기본 단일 파일 업로드 제한 */
+export const PPTX_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+export function formatFileSizeMb(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(2)}MB`
+}
+
 export function isPptxFile(file: File): boolean {
   return (
     file.name.toLowerCase().endsWith('.pptx') ||
     file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  )
+}
+
+export function isPptxWithinUploadLimit(file: File): boolean {
+  return file.size <= PPTX_MAX_UPLOAD_BYTES
+}
+
+/** 용량 초과 시 Error를 throw — 업로드 훅/제출 직전 검사용 */
+export function assertPptxUploadSize(file: File): void {
+  if (!isPptxWithinUploadLimit(file)) {
+    throw new Error(
+      `파일 용량이 50MB를 초과합니다. (현재 ${formatFileSizeMb(file.size)})\nSupabase 업로드 제한은 50MB입니다.`,
+    )
+  }
+}
+
+function alertPptxTooLarge(file: File): void {
+  window.alert(
+    `파일 용량이 업로드 제한(50MB)을 초과합니다.\n\n선택한 파일: ${formatFileSizeMb(file.size)}\n더 작은 파일로 다시 선택해 주세요.`,
   )
 }
 
@@ -27,6 +53,10 @@ export function PptxFileDropzone({
   const handleFile = useCallback(
     (next: File) => {
       if (!isPptxFile(next)) return false
+      if (!isPptxWithinUploadLimit(next)) {
+        alertPptxTooLarge(next)
+        return false
+      }
       onFileSelect(next)
       return true
     },
@@ -78,9 +108,7 @@ export function PptxFileDropzone({
             />
           </svg>
           <p className="mt-3 text-sm font-medium text-gray-900">{file.name}</p>
-          <p className="mt-1 text-xs text-gray-500">
-            {(file.size / 1024 / 1024).toFixed(2)} MB
-          </p>
+          <p className="mt-1 text-xs text-gray-500">{formatFileSizeMb(file.size)}</p>
           {onClear && !disabled && (
             <button
               type="button"
@@ -114,6 +142,7 @@ export function PptxFileDropzone({
           <p className="mt-3 text-sm font-medium text-gray-700">
             PPTX 파일을 여기에 드래그하세요
           </p>
+          <p className="mt-1 text-xs text-gray-500">최대 50MB · PPTX만 가능</p>
           <p className="mt-1 text-xs text-gray-500">또는</p>
           <label className={`nb-btn-secondary mt-3 ${disabled ? '' : 'cursor-pointer'}`}>
             파일 선택

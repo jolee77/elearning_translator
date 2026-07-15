@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { assertPptxUploadSize } from '../components/project/PptxFileDropzone'
 import { supabase } from '../lib/supabase'
 import type { Project, ProjectStatus } from '../types'
 import { useAuth } from './useAuth'
@@ -96,6 +97,7 @@ export function useCreateProject() {
   return useMutation({
     mutationFn: async (input: CreateProjectInput): Promise<Project> => {
       if (!user) throw new Error('로그인이 필요합니다.')
+      assertPptxUploadSize(input.pptxFile)
 
       const title = `${input.courseName.trim()} - ${input.episodeName.trim()}`
 
@@ -174,6 +176,7 @@ export function useReplaceProjectPptx() {
   return useMutation({
     mutationFn: async (input: ReplaceProjectPptxInput): Promise<Project> => {
       if (!user) throw new Error('로그인이 필요합니다.')
+      assertPptxUploadSize(input.pptxFile)
 
       const storagePath = getPptxStoragePath(user.id, input.projectId)
 

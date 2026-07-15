@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PptxFileDropzone, isPptxFile } from '../components/project/PptxFileDropzone'
+import {
+  PptxFileDropzone,
+  assertPptxUploadSize,
+  isPptxFile,
+  isPptxWithinUploadLimit,
+} from '../components/project/PptxFileDropzone'
 import { Spinner } from '../components/ui/Spinner'
 import { useToast } from '../hooks/ToastProvider'
 import { useSettings } from '../hooks/useAdmin'
@@ -37,6 +42,12 @@ export function NewProjectPage() {
         showToast('PPTX 파일만 업로드할 수 있습니다.', 'error')
         return
       }
+      if (!isPptxWithinUploadLimit(file)) {
+        window.alert(
+          `파일 용량이 업로드 제한(50MB)을 초과합니다.\n\n선택한 파일: ${(file.size / 1024 / 1024).toFixed(2)}MB\n더 작은 파일로 다시 선택해 주세요.`,
+        )
+        return
+      }
       setPptxFile(file)
     },
     [showToast],
@@ -51,6 +62,7 @@ export function NewProjectPage() {
     }
 
     try {
+      assertPptxUploadSize(pptxFile)
       const project = await createProject.mutateAsync({
         courseName,
         episodeName,
@@ -60,7 +72,9 @@ export function NewProjectPage() {
       showToast('프로젝트가 생성되었습니다.', 'success')
       navigate(`/projects/${project.id}`)
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '프로젝트 생성에 실패했습니다.', 'error')
+      const message = err instanceof Error ? err.message : '프로젝트 생성에 실패했습니다.'
+      if (message.includes('50MB')) window.alert(message)
+      showToast(message, 'error')
     }
   }
 

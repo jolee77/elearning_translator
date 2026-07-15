@@ -16,7 +16,7 @@ import {
 } from '../../hooks/useSlides'
 import { useReplaceProjectPptx } from '../../hooks/useProject'
 import { useToast } from '../../hooks/ToastProvider'
-import { PptxFileDropzone } from './PptxFileDropzone'
+import { PptxFileDropzone, assertPptxUploadSize } from './PptxFileDropzone'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { ChunkProgressPanel } from '../ui/ChunkProgressPanel'
 import { Spinner } from '../ui/Spinner'
@@ -137,6 +137,15 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
   const handleReplacePptx = async () => {
     if (!replacementFile) {
       showToast('변경할 PPTX 파일을 선택해 주세요.', 'error')
+      return
+    }
+
+    try {
+      assertPptxUploadSize(replacementFile)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '파일 용량이 50MB를 초과합니다.'
+      window.alert(message)
+      showToast(message, 'error')
       return
     }
 
