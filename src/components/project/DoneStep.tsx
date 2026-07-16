@@ -145,7 +145,9 @@ export function DoneStep({ project }: DoneStepProps) {
     setDownloading('pptx')
     try {
       const sourceFile = await downloadSourcePptx(project.source_pptx_url)
-      const blob = await generateVnPptx(sourceFile, translations)
+      const blob = await generateVnPptx(sourceFile, translations, {
+        spellingResults,
+      })
       if (blob.size === 0) {
         throw new Error('생성된 PPTX 파일이 비어 있습니다.')
       }
@@ -195,7 +197,9 @@ export function DoneStep({ project }: DoneStepProps) {
         buildXlsxBlob(),
       ])
 
-      const pptxBlob = await generateVnPptx(sourceFile, translations)
+      const pptxBlob = await generateVnPptx(sourceFile, translations, {
+        spellingResults,
+      })
       if (pptxBlob.size === 0) {
         throw new Error('생성된 PPTX 파일이 비어 있습니다.')
       }
