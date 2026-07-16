@@ -24,7 +24,7 @@ import {
 } from '../../hooks/useSpelling'
 import { useSlides } from '../../hooks/useSlides'
 import { getErrorMessage } from '../../lib/errors'
-import { fieldKeyLabel } from '../../lib/slideFields'
+import { fieldKeyLabel, extractFieldBadgeClass, extractFieldPanelClass } from '../../lib/slideFields'
 import {
   buildSpellableFields,
   formatSpellingReviewReason,
@@ -764,7 +764,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                               선택
                             </label>
                           )}
-                          <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200">
+                          <span className={extractFieldBadgeClass(result.field)}>
                             {fieldKeyLabel(result.field)}
                           </span>
                           {itemStatus === 'pending' && (
@@ -796,7 +796,9 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                         <div className={hasChange ? 'grid gap-3 md:grid-cols-2' : ''}>
                           <div>
                             <p className="text-xs font-medium text-gray-500">원문 (추출 텍스트)</p>
-                            <div className="mt-1">
+                            <div
+                              className={`mt-1 ${extractFieldPanelClass(result.field)}`}
+                            >
                               <SuggestionHighlight
                                 original={result.original}
                                 suggestion={result.suggestion}
@@ -808,7 +810,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                           {hasChange && (
                             <div>
                               <p className="text-xs font-medium text-gray-500">AI 수정안</p>
-                              <div className="mt-1">
+                              <div className="mt-1 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2">
                                 <SuggestionHighlight
                                   original={result.original}
                                   suggestion={result.suggestion}

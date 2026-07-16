@@ -90,3 +90,18 @@ export function fieldKeyLabel(fieldKey: string): string {
   if (fieldKey === 'screen_text') return '화면텍스트'
   return fieldKey
 }
+
+export function isNarrationFieldKey(fieldKey: string): boolean {
+  return fieldKey === 'narration' || fieldKey === 'tr_narration'
+}
+
+export function extractFieldBadgeClass(fieldKey: string): string {
+  return isNarrationFieldKey(fieldKey) ? 'nb-badge nb-badge--narration' : 'nb-badge nb-badge--screen'
+}
+
+export function extractFieldPanelClass(fieldKey: string, excluded = false): string {
+  if (excluded) return 'nb-extract-panel nb-extract-panel--excluded'
+  return isNarrationFieldKey(fieldKey)
+    ? 'nb-extract-panel nb-extract-panel--narration'
+    : 'nb-extract-panel nb-extract-panel--screen'
+}

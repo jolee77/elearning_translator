@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { SLIDE_TYPE_LABELS } from '../../lib/pptxParser'
-import { buildSelectableFields, fieldKeyLabel } from '../../lib/slideFields'
+import { buildSelectableFields, extractFieldBadgeClass, extractFieldPanelClass, fieldKeyLabel } from '../../lib/slideFields'
 import { isStepAccessible, stepPrerequisiteMessage } from '../../lib/projectStatus'
 import {
   useCompleteSlideSelection,
@@ -364,6 +364,17 @@ export function SlideExclusionStep({ project, onStepComplete }: SlideExclusionSt
         </span>
       </div>
 
+      <div className="nb-extract-legend">
+        <span>
+          <span className="nb-extract-legend-swatch nb-extract-legend-swatch--screen" />
+          화면텍스트
+        </span>
+        <span>
+          <span className="nb-extract-legend-swatch nb-extract-legend-swatch--narration" />
+          나레이션
+        </span>
+      </div>
+
       {canEdit && (
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setAll(false)} className="nb-btn-secondary text-xs">
@@ -539,14 +550,18 @@ export function SlideExclusionStep({ project, onStepComplete }: SlideExclusionSt
                                 />
                                 제외
                               </label>
-                              <span className="nb-badge">{fieldKeyLabel(field.field_key)}</span>
+                              <span className={extractFieldBadgeClass(field.field_key)}>
+                                {fieldKeyLabel(field.field_key)}
+                              </span>
                               {excluded && (
                                 <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-600">
                                   번역·전문가 검증 제외
                                 </span>
                               )}
                             </div>
-                            <p className="whitespace-pre-wrap text-sm text-gray-800">{field.text}</p>
+                            <p className={extractFieldPanelClass(field.field_key, excluded)}>
+                              {field.text}
+                            </p>
                           </div>
                         )
                       })

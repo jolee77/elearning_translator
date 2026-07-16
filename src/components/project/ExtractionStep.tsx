@@ -363,6 +363,17 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
         </div>
       )}
 
+      <div className="nb-extract-legend">
+        <span>
+          <span className="nb-extract-legend-swatch nb-extract-legend-swatch--screen" />
+          화면텍스트
+        </span>
+        <span>
+          <span className="nb-extract-legend-swatch nb-extract-legend-swatch--narration" />
+          나레이션
+        </span>
+      </div>
+
       {slidesLoading || isExtracting ? (
         <div className="nb-empty-state">
           <Spinner className="text-gray-400" />
@@ -434,7 +445,7 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                             updateLocalSlide(slide.id, 'screen_text', e.target.value)
                           }
                           rows={3}
-                          className="nb-textarea w-full text-xs"
+                          className="nb-textarea nb-extract-textarea--screen w-full text-xs"
                         />
                       </td>
                       <td className="px-3 py-3">
@@ -446,7 +457,9 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
                           rows={3}
                           placeholder={noNarration ? '나레이션 없음' : ''}
                           className={`nb-textarea w-full text-xs ${
-                            noNarration ? 'border-amber-300 bg-amber-50' : ''
+                            noNarration
+                              ? 'border-amber-300 bg-amber-50'
+                              : 'nb-extract-textarea--narration'
                           }`}
                         />
                       </td>

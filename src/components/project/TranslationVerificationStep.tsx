@@ -19,7 +19,7 @@ import {
   useFinalizeVerification,
   useVerifications,
 } from '../../hooks/useVerification'
-import { fieldKeyLabel } from '../../lib/slideFields'
+import { fieldKeyLabel, extractFieldBadgeClass, extractFieldPanelClass } from '../../lib/slideFields'
 import { getLangConfig } from '../../lib/lang'
 import { isStepAccessible, stepPrerequisiteMessage } from '../../lib/projectStatus'
 import type { Project, Translation } from '../../types'
@@ -387,7 +387,9 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
                       return (
                         <div key={tr.id} className="px-4 py-3">
                           <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <span className="nb-badge">{fieldKeyLabel(tr.field)}</span>
+                            <span className={extractFieldBadgeClass(tr.field)}>
+                              {fieldKeyLabel(tr.field)}
+                            </span>
                             {isNarration && speedInfo && (
                               <span
                                 className={`text-xs ${
@@ -415,7 +417,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
                           >
                             <div>
                               <p className="nb-field-label">한국어</p>
-                              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
+                              <p className={`mt-1 ${extractFieldPanelClass(tr.field)}`}>
                                 {tr.source}
                               </p>
                             </div>
