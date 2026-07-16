@@ -127,19 +127,13 @@ export function useExtractSlides() {
       const rows = toSlideRows(projectId, parsed)
 
       // slides 삭제 시 translations / verifications / spelling_results / expert_review_items CASCADE
+      // expert_reviews(링크)는 이력으로 유지 — Step4에서 완료 링크를 계속 볼 수 있게 함
       const { error: deleteError } = await supabase
         .from('slides')
         .delete()
         .eq('project_id', projectId)
 
       if (deleteError) throw deleteError
-
-      const { error: reviewError } = await supabase
-        .from('expert_reviews')
-        .delete()
-        .eq('project_id', projectId)
-
-      if (reviewError) throw reviewError
 
       // 하위 데이터 삭제 후 상태를 추출 전으로 되돌려 빈 Step3가 done으로 남는 것을 방지
       const { error: statusError } = await supabase

@@ -33,8 +33,9 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
   const { data: slides = [] } = useSlides(project.id)
   const createReview = useCreateExpertReview()
 
-  const activeReview = reviews.find((r) => r.status !== 'done') ?? reviews[0]
-  const { data: items = [] } = useExpertReviewItems(activeReview?.id, project.id)
+  // 진행 중 우선, 없으면 최신(완료 포함) — 완료 프로젝트 재진입 시 URL이 사라지지 않도록
+  const displayedReview = reviews.find((r) => r.status !== 'done') ?? reviews[0] ?? null
+  const { data: items = [] } = useExpertReviewItems(displayedReview?.id, project.id)
 
   const [reviewerName, setReviewerName] = useState('')
   const [reviewerEmail, setReviewerEmail] = useState('')
@@ -42,8 +43,9 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const accessible = isStepAccessible(4, project.status)
-  const hasActiveReview = activeReview && activeReview.status !== 'done'
-  const reviewUrl = activeReview ? getReviewUrl(activeReview.token) : ''
+  const hasReview = displayedReview != null
+  const isReviewDone = displayedReview?.status === 'done'
+  const reviewUrl = displayedReview ? getReviewUrl(displayedReview.token) : ''
   const stats = getExpertReviewStats(items)
 
   const slideMap = useMemo(() => new Map(slides.map((s) => [s.id, s])), [slides])
@@ -124,7 +126,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
             외부 전문가에게 검증 링크를 공유합니다. 역번역 결과도 함께 제공됩니다.
           </p>
         </div>
-        {hasActiveReview && (
+        {hasReview && (
           <button
             type="button"
             onClick={handleRefresh}
@@ -146,7 +148,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
           <Spinner className="text-gray-400" />
           <p className="text-sm text-gray-500">검증 정보를 불러오는 중...</p>
         </div>
-      ) : hasActiveReview ? (
+      ) : hasReview && displayedReview ? (
         <div className="space-y-4">
           <div className="nb-input-panel">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -156,8 +158,8 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
                 </p>
                 <p className="mt-1 break-all font-mono text-sm text-gray-800">{reviewUrl}</p>
                 <p className="mt-2 text-xs text-gray-600">
-                  전문가: {activeReview.expert_name}
-                  {activeReview.expert_email && ` (${activeReview.expert_email})`}
+                  전문가: {displayedReview.expert_name}
+                  {displayedReview.expert_email && ` (${displayedReview.expert_email})`}
                 </p>
               </div>
               <button type="button" onClick={handleCopyLink} className="nb-btn-primary">
@@ -170,7 +172,9 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium text-gray-800">
                 검토 상태:{' '}
-                <span style={{ color: '#1677ff' }}>{reviewStatusLabel(activeReview.status)}</span>
+                <span style={{ color: isReviewDone ? '#389e0d' : '#1677ff' }}>
+                  {reviewStatusLabel(displayedReview.status)}
+                </span>
               </p>
               {items.length > 0 && (
                 <p className="text-sm text-gray-600">
@@ -186,6 +190,12 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
                   label={`전문가 검토 (${stats.total - stats.pending}/${stats.total})`}
                 />
               </div>
+            )}
+            {items.length === 0 && (
+              <p className="mt-3 text-xs text-amber-700">
+                검토 항목이 없습니다. 재추출로 슬라이드가 바뀌면 항목이 삭제될 수 있습니다.
+                번역 데이터가 있으면 전문가 링크 접속 시 항목이 복구될 수 있습니다.
+              </p>
             )}
           </div>
 
