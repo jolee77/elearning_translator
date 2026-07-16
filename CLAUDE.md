@@ -249,6 +249,7 @@ const KO_CPM = 320
 ## 구현 현황 (2026-07-16)
 
 ### 완료
+- [x] `projects_status_check`에 `selection_done` 추가 (번역 대상 선택 완료 실패 수정)
 - [x] Step 2 맞춤법: 슬라이드 접기/펼치기 + 슬라이드 단위 선택(해당 슬라이드 추출 항목 일괄)
 - [x] Step 4: 항목·슬라이드별 전문가 검증 제외 (`translations.exclude_from_expert_review`)
 - [x] Step 3 번역 대상 선택: 추출 내용 확인·제외 체크·`selection_done` 후 번역 진행
