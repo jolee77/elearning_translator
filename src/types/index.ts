@@ -144,6 +144,8 @@ export interface Translation {
   vi_text: string
   cpm: number | null
   vi_wpm: number | null
+  /** true이면 전문가 검증 링크 생성 시 제외 */
+  exclude_from_expert_review: boolean
   created_at: string
   updated_at: string
 }

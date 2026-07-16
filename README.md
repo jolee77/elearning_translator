@@ -71,7 +71,13 @@ npm run build
 - UI 6단계: 추출 → 맞춤법 → **대상 선택** → 번역·역번역 → 전문가 → 완료
 - 번역·엑셀 산출물에서 제외 슬라이드 필터 (`isTranslateEligibleSlide`)
 
-DB 마이그레이션: `supabase/migrations/20260716140000_slides_exclude_from_translation.sql`
+### 맞춤법·전문가 제외 UX (2026-07-16)
+- Step 2: 슬라이드 접기/펼치기, 슬라이드 체크 시 해당 슬라이드 검토 대기 항목 일괄 선택
+- Step 4: 항목·슬라이드별 「전문가 제외」 → `translations.exclude_from_expert_review` (링크 생성 시 제외)
+
+DB 마이그레이션:
+- `supabase/migrations/20260716140000_slides_exclude_from_translation.sql`
+- `supabase/migrations/20260716150000_exclude_from_expert_review.sql`
 
 ## 최근 수정 (2026-07-10)
 

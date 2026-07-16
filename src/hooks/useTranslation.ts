@@ -34,7 +34,10 @@ export function useTranslations(projectId: string | undefined) {
         .order('created_at', { ascending: true })
 
       if (error) throw error
-      return data
+      return (data ?? []).map((row) => ({
+        ...row,
+        exclude_from_expert_review: row.exclude_from_expert_review === true,
+      }))
     },
     enabled: !!projectId,
   })
@@ -143,6 +146,33 @@ export function useUpdateTranslation() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...translationsQueryKey, variables.projectId] })
       queryClient.invalidateQueries({ queryKey: ['change_logs', variables.projectId] })
+    },
+  })
+}
+
+/** 전문가 검증 제외 플래그 일괄 저장 */
+export function useSetExpertReviewExclusions() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      projectId: _projectId,
+      updates,
+    }: {
+      projectId: string
+      updates: { id: string; exclude_from_expert_review: boolean }[]
+    }): Promise<void> => {
+      for (const row of updates) {
+        const { error } = await supabase
+          .from('translations')
+          .update({ exclude_from_expert_review: row.exclude_from_expert_review })
+          .eq('id', row.id)
+
+        if (error) throw error
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...translationsQueryKey, variables.projectId] })
     },
   })
 }

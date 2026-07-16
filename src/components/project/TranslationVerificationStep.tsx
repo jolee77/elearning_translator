@@ -8,6 +8,7 @@ import { useSlides } from '../../hooks/useSlides'
 import {
   getNarrationSpeedInfo,
   NARRATION_FIELD_KEY,
+  useSetExpertReviewExclusions,
   useTranslations,
   useUpdateTranslation,
 } from '../../hooks/useTranslation'
@@ -43,10 +44,14 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
   const { data: verifications = [], isLoading: verificationsLoading } = useVerifications(project.id)
 
   const updateTranslation = useUpdateTranslation()
+  const setExpertExclusions = useSetExpertReviewExclusions()
   const finalize = useFinalizeVerification()
 
   const [localTexts, setLocalTexts] = useState<Record<string, string>>({})
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
+  const [excludedExpertIds, setExcludedExpertIds] = useState<Set<string>>(new Set())
+  const [collapsedSlideNums, setCollapsedSlideNums] = useState<Set<number>>(new Set())
+  const [exclusionDirty, setExclusionDirty] = useState(false)
 
   const isTranslating = translateJob?.status === 'running'
   const isVerifying = verifyJob?.status === 'running'
@@ -90,6 +95,13 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [translations])
 
+  useEffect(() => {
+    if (exclusionDirty) return
+    setExcludedExpertIds(
+      new Set(translations.filter((t) => t.exclude_from_expert_review).map((t) => t.id)),
+    )
+  }, [translations, exclusionDirty])
+
   const reviewSummary = useMemo(() => {
     let passed = 0
     let needsReview = 0
@@ -102,6 +114,12 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     }
     return { passed, needsReview }
   }, [verifications])
+
+  const expertExclusionStats = useMemo(() => {
+    const excluded = excludedExpertIds.size
+    const included = translations.length - excluded
+    return { excluded, included }
+  }, [translations.length, excludedExpertIds])
 
   const handleRunTranslation = () => {
     if (!accessible) {
@@ -167,6 +185,52 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     }
   }
 
+  const toggleFieldExpertExclude = (id: string) => {
+    setExclusionDirty(true)
+    setExcludedExpertIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSlideExpertExclude = (slideTranslations: Translation[]) => {
+    setExclusionDirty(true)
+    const ids = slideTranslations.map((t) => t.id)
+    setExcludedExpertIds((prev) => {
+      const next = new Set(prev)
+      const allExcluded = ids.every((id) => next.has(id))
+      if (allExcluded) {
+        for (const id of ids) next.delete(id)
+      } else {
+        for (const id of ids) next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleSlideCollapsed = (slideNum: number) => {
+    setCollapsedSlideNums((prev) => {
+      const next = new Set(prev)
+      if (next.has(slideNum)) next.delete(slideNum)
+      else next.add(slideNum)
+      return next
+    })
+  }
+
+  const saveExpertExclusions = async () => {
+    const updates = translations.map((t) => ({
+      id: t.id,
+      exclude_from_expert_review: excludedExpertIds.has(t.id),
+    }))
+    await setExpertExclusions.mutateAsync({
+      projectId: project.id,
+      updates,
+    })
+    setExclusionDirty(false)
+  }
+
   const handleComplete = async () => {
     if (dirtyIds.size > 0) {
       showToast('저장되지 않은 변경사항이 있습니다.', 'error')
@@ -190,8 +254,15 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
       )
       return
     }
+    if (expertExclusionStats.included === 0) {
+      showToast('전문가 검증에 포함할 항목이 최소 1건 필요합니다.', 'error')
+      return
+    }
 
     try {
+      if (exclusionDirty) {
+        await saveExpertExclusions()
+      }
       await finalize.mutateAsync({ projectId: project.id })
       showToast('번역·역번역 검증이 완료되었습니다. 전문가 검증을 요청할 수 있습니다.', 'success')
       onStepComplete?.()
@@ -200,10 +271,23 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     }
   }
 
+  const handleSaveExclusionsClick = async () => {
+    try {
+      await saveExpertExclusions()
+      showToast(
+        `전문가 검증 제외 설정을 저장했습니다. (포함 ${expertExclusionStats.included}·제외 ${expertExclusionStats.excluded})`,
+        'success',
+      )
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '제외 설정 저장에 실패했습니다.', 'error')
+    }
+  }
+
   const isBusy =
     isTranslating ||
     isVerifying ||
     updateTranslation.isPending ||
+    setExpertExclusions.isPending ||
     finalize.isPending
 
   const isLoading = translationsLoading || verificationsLoading
@@ -213,10 +297,10 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     <div className="space-y-4">
       <div className="nb-page-toolbar">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">Step 3. 번역·역번역 검증</h3>
+          <h3 className="text-base font-semibold text-gray-900">Step 4. 번역·역번역 검증</h3>
           <p className="mt-0.5 text-sm text-gray-500">
-            AI 번역 후 화면텍스트·나레이션 모두 역번역으로 품질을 확인합니다. 역번역 결과는 전문가
-            검증용 참고 자료이며, 반영 여부는 전문가가 판단합니다.
+            AI 번역 후 화면텍스트·나레이션 모두 역번역으로 품질을 확인합니다. 전문가 검증에서 제외할
+            항목·슬라이드를 선택할 수 있습니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -245,7 +329,8 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
               isBusy ||
               translations.length === 0 ||
               verifications.length === 0 ||
-              dirtyIds.size > 0
+              dirtyIds.size > 0 ||
+              expertExclusionStats.included === 0
             }
             className="nb-btn-primary"
           >
@@ -270,6 +355,42 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
               </span>
             </>
           )}
+        </div>
+      )}
+
+      {translations.length > 0 && (
+        <div className="nb-summary-bar">
+          <span className="text-xs text-gray-700">
+            전문가 검증 포함 {expertExclusionStats.included}건
+            {expertExclusionStats.excluded > 0 && (
+              <> · 제외 {expertExclusionStats.excluded}건</>
+            )}
+            {exclusionDirty && <span className="ml-1 text-amber-700">(미저장)</span>}
+          </span>
+          <button
+            type="button"
+            onClick={handleSaveExclusionsClick}
+            disabled={isBusy || !exclusionDirty}
+            className="nb-btn-secondary text-xs"
+          >
+            {setExpertExclusions.isPending ? '저장 중...' : '전문가 제외 설정 저장'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsedSlideNums(new Set())}
+            className="nb-btn-secondary text-xs"
+          >
+            모두 펼치기
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setCollapsedSlideNums(new Set(groupedTranslations.map(([num]) => num)))
+            }
+            className="nb-btn-secondary text-xs"
+          >
+            모두 접기
+          </button>
         </div>
       )}
 
@@ -312,99 +433,187 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
                 : '역번역 검증 진행 중 — 완료된 항목이 아래에 먼저 표시됩니다.'}
             </div>
           )}
-          {groupedTranslations.map(([slideNum, slideTranslations]) => (
-            <div key={slideNum} className="nb-card">
-              <div className="nb-card-header">
-                <h4 className="text-sm font-semibold text-gray-800">슬라이드 {slideNum}</h4>
-              </div>
-              <div className="divide-y divide-gray-100">
-                {slideTranslations.map((tr) => {
-                  const isNarration = tr.field === NARRATION_FIELD_KEY
-                  const speedInfo = isNarration
-                    ? getNarrationSpeedInfo(tr, project.target_lang)
-                    : null
-                  const isDirty = dirtyIds.has(tr.id)
-                  const verification = verificationByTranslationId.get(tr.id)
-                  const showVerificationColumn = verification != null || verifications.length > 0
+          {groupedTranslations.map(([slideNum, slideTranslations]) => {
+            const isCollapsed = collapsedSlideNums.has(slideNum)
+            const slideIds = slideTranslations.map((t) => t.id)
+            const allExcluded = slideIds.every((id) => excludedExpertIds.has(id))
+            const someExcluded = slideIds.some((id) => excludedExpertIds.has(id)) && !allExcluded
 
-                  return (
-                    <div key={tr.id} className="px-4 py-3">
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <span className="nb-badge">{fieldKeyLabel(tr.field)}</span>
-                        {isNarration && speedInfo && (
-                          <span
-                            className={`text-xs ${
-                              speedInfo.exceeds ? 'font-medium text-red-600' : 'text-gray-500'
-                            }`}
-                          >
-                            발화시간: 한국어 {formatSeconds(speedInfo.koSeconds)} /{' '}
-                            {speedInfo.langName} {formatSeconds(speedInfo.targetSeconds)}
-                            {speedInfo.exceeds && ' ⚠ 초과'}
-                          </span>
-                        )}
-                        {verification && (
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${matchStatusClass(getMatchStatus(verification))}`}
-                          >
-                            {matchStatusLabel(getMatchStatus(verification))}
-                            {verification.score != null && ` (${verification.score}%)`}
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        className={`grid gap-3 ${showVerificationColumn ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}
+            return (
+              <div
+                key={slideNum}
+                className={`nb-card ${allExcluded ? 'opacity-70' : ''}`}
+              >
+                <div className="nb-card-header">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={allExcluded}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someExcluded
+                        }}
+                        onChange={() => toggleSlideExpertExclude(slideTranslations)}
+                        disabled={isBusy}
+                        className="rounded border-gray-300 text-[#162b52] focus:ring-[#162b52]"
+                        title="이 슬라이드 항목을 전문가 검증에서 모두 제외"
+                        aria-label={`슬라이드 ${slideNum} 전문가 검증 제외`}
+                      />
+                      슬라이드 제외
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => toggleSlideCollapsed(slideNum)}
+                      className="flex flex-wrap items-center gap-2 text-left"
+                      aria-expanded={!isCollapsed}
+                    >
+                      <svg
+                        className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
+                          isCollapsed ? '' : 'rotate-90'
+                        }`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        aria-hidden
                       >
-                        <div>
-                          <p className="nb-field-label">한국어</p>
-                          <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
-                            {tr.source}
-                          </p>
-                        </div>
-                        <div className="nb-input-panel">
-                          <p className="nb-field-label">{langName}</p>
-                          <AutoResizeTextarea
-                            value={localTexts[tr.id] ?? tr.vi_text}
-                            onChange={(e) => handleTextChange(tr.id, e.target.value)}
-                            className="nb-textarea mt-1"
-                          />
-                          {isDirty && (
-                            <button
-                              type="button"
-                              onClick={() => handleSave(tr)}
-                              disabled={isBusy}
-                              className="nb-btn-secondary mt-2 text-xs"
-                            >
-                              저장
-                            </button>
-                          )}
-                        </div>
-                        {verification ? (
-                          <div>
-                            <p className="nb-field-label">역번역 (전문가 참고)</p>
-                            <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
-                              {verification.back_translation}
-                            </p>
-                            {verification.issues && (
-                              <p className="mt-2 text-xs text-amber-800">
-                                {verification.issues}
-                              </p>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                      <h4 className="text-sm font-semibold text-gray-800">슬라이드 {slideNum}</h4>
+                      <span className="text-xs text-gray-500">
+                        {slideTranslations.length}항목
+                        {allExcluded
+                          ? ' · 전부 제외'
+                          : someExcluded
+                            ? ` · 일부 제외`
+                            : ''}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {isCollapsed ? '펼치기' : '접기'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+                {!isCollapsed && (
+                  <div className="divide-y divide-gray-100">
+                    {slideTranslations.map((tr) => {
+                      const isNarration = tr.field === NARRATION_FIELD_KEY
+                      const speedInfo = isNarration
+                        ? getNarrationSpeedInfo(tr, project.target_lang)
+                        : null
+                      const isDirty = dirtyIds.has(tr.id)
+                      const verification = verificationByTranslationId.get(tr.id)
+                      const showVerificationColumn =
+                        verification != null || verifications.length > 0
+                      const excludedFromExpert = excludedExpertIds.has(tr.id)
+
+                      return (
+                        <div
+                          key={tr.id}
+                          className={`px-4 py-3 ${excludedFromExpert ? 'bg-gray-50/80' : ''}`}
+                        >
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={excludedFromExpert}
+                                onChange={() => toggleFieldExpertExclude(tr.id)}
+                                disabled={isBusy}
+                                className="rounded border-gray-300 text-[#162b52] focus:ring-[#162b52]"
+                              />
+                              전문가 제외
+                            </label>
+                            <span className="nb-badge">{fieldKeyLabel(tr.field)}</span>
+                            {excludedFromExpert && (
+                              <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-600">
+                                전문가 검증 제외
+                              </span>
+                            )}
+                            {isNarration && speedInfo && (
+                              <span
+                                className={`text-xs ${
+                                  speedInfo.exceeds
+                                    ? 'font-medium text-red-600'
+                                    : 'text-gray-500'
+                                }`}
+                              >
+                                발화시간: 한국어 {formatSeconds(speedInfo.koSeconds)} /{' '}
+                                {speedInfo.langName} {formatSeconds(speedInfo.targetSeconds)}
+                                {speedInfo.exceeds && ' ⚠ 초과'}
+                              </span>
+                            )}
+                            {verification && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${matchStatusClass(getMatchStatus(verification))}`}
+                              >
+                                {matchStatusLabel(getMatchStatus(verification))}
+                                {verification.score != null && ` (${verification.score}%)`}
+                              </span>
                             )}
                           </div>
-                        ) : showVerificationColumn ? (
-                          <div>
-                            <p className="nb-field-label">역번역</p>
-                            <p className="mt-1 text-sm text-gray-400">
-                              역번역 결과가 없습니다. 「역번역 검증」을 다시 실행해 주세요.
-                            </p>
+                          <div
+                            className={`grid gap-3 ${showVerificationColumn ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}
+                          >
+                            <div>
+                              <p className="nb-field-label">한국어</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
+                                {tr.source}
+                              </p>
+                            </div>
+                            <div className="nb-input-panel">
+                              <p className="nb-field-label">{langName}</p>
+                              <AutoResizeTextarea
+                                value={localTexts[tr.id] ?? tr.vi_text}
+                                onChange={(e) => handleTextChange(tr.id, e.target.value)}
+                                className="nb-textarea mt-1"
+                              />
+                              {isDirty && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSave(tr)}
+                                  disabled={isBusy}
+                                  className="nb-btn-secondary mt-2 text-xs"
+                                >
+                                  저장
+                                </button>
+                              )}
+                            </div>
+                            {verification ? (
+                              <div>
+                                <p className="nb-field-label">역번역 (전문가 참고)</p>
+                                <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
+                                  {verification.back_translation}
+                                </p>
+                                {verification.issues && (
+                                  <p className="mt-2 text-xs text-amber-800">
+                                    {verification.issues}
+                                  </p>
+                                )}
+                              </div>
+                            ) : showVerificationColumn ? (
+                              <div>
+                                <p className="nb-field-label">역번역</p>
+                                <p className="mt-1 text-sm text-gray-400">
+                                  역번역 결과가 없습니다. 「역번역 검증」을 다시 실행해 주세요.
+                                </p>
+                              </div>
+                            ) : null}
                           </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  )
-                })}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

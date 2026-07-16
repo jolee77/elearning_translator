@@ -68,6 +68,8 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
 
   const [lastSummary, setLastSummary] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [collapsedSlideIds, setCollapsedSlideIds] = useState<Set<string>>(new Set())
+  const [collapseInitialized, setCollapseInitialized] = useState(false)
   const [localError, setLocalError] = useState(false)
 
   const isRunning = spellingJob?.status === 'running'
@@ -243,6 +245,20 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
     })
   }, [pendingReview, uncommittedApproved])
 
+  useEffect(() => {
+    if (collapseInitialized || visibleSlideGroups.length === 0) return
+    // 검토 대기 슬라이드만 펼치고 나머지는 접음
+    const collapsed = new Set<string>()
+    for (const group of visibleSlideGroups) {
+      const hasPending = group.slideResults.some(isSpellingPendingReview)
+      if (!hasPending && group.coverage !== 'not_checked') {
+        collapsed.add(group.slide.id)
+      }
+    }
+    setCollapsedSlideIds(collapsed)
+    setCollapseInitialized(true)
+  }, [visibleSlideGroups, collapseInitialized])
+
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -252,9 +268,37 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
     })
   }
 
+  const toggleSlideExpanded = (slideId: string) => {
+    setCollapsedSlideIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(slideId)) next.delete(slideId)
+      else next.add(slideId)
+      return next
+    })
+  }
+
+  const toggleSlidePendingSelected = (slideResults: SpellingResult[]) => {
+    const pendingIds = slideResults.filter(isSpellingPendingReview).map((r) => r.id)
+    if (pendingIds.length === 0) return
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      const allSelected = pendingIds.every((id) => next.has(id))
+      if (allSelected) {
+        for (const id of pendingIds) next.delete(id)
+      } else {
+        for (const id of pendingIds) next.add(id)
+      }
+      return next
+    })
+  }
+
   const selectAllPending = () => {
     setSelectedIds(new Set(pendingReview.map((r) => r.id)))
   }
+
+  const expandAllSlides = () => setCollapsedSlideIds(new Set())
+  const collapseAllSlides = () =>
+    setCollapsedSlideIds(new Set(visibleSlideGroups.map((g) => g.slide.id)))
 
   const handleRunSpelling = () => {
     if (!accessible) {
@@ -265,6 +309,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
     setLastSummary(null)
     setLocalError(false)
     setSelectedIds(new Set())
+    setCollapseInitialized(false)
     startSpellingJob({
       projectId: project.id,
       projectTitle: project.title,
@@ -533,6 +578,22 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
               </button>
               <button
                 type="button"
+                onClick={expandAllSlides}
+                disabled={isBusy}
+                className="nb-btn-secondary text-xs"
+              >
+                슬라이드 모두 펼치기
+              </button>
+              <button
+                type="button"
+                onClick={collapseAllSlides}
+                disabled={isBusy}
+                className="nb-btn-secondary text-xs"
+              >
+                슬라이드 모두 접기
+              </button>
+              <button
+                type="button"
                 onClick={handleBulkApprove}
                 disabled={isBusy || selectedIds.size === 0}
                 className="nb-btn-primary text-xs"
@@ -587,7 +648,16 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                 ` 이상 없음·검토 완료 ${reviewStats.clearSlides}슬라이드는 목록에서 숨겼습니다.`}
             </div>
           ) : (
-            visibleSlideGroups.map(({ slide, slideResults, spellable, coverage }) => (
+            visibleSlideGroups.map(({ slide, slideResults, spellable, coverage }) => {
+              const pendingInSlide = slideResults.filter(isSpellingPendingReview)
+              const pendingIds = pendingInSlide.map((r) => r.id)
+              const allPendingSelected =
+                pendingIds.length > 0 && pendingIds.every((id) => selectedIds.has(id))
+              const somePendingSelected =
+                pendingIds.some((id) => selectedIds.has(id)) && !allPendingSelected
+              const isCollapsed = collapsedSlideIds.has(slide.id)
+
+              return (
             <div
               key={slide.id}
               className={`nb-card overflow-hidden ${spellingSlideCardClass(coverage)}`}
@@ -598,19 +668,66 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                 }`}
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="text-sm font-semibold text-gray-800">
-                    슬라이드 {slide.slide_num}
-                  </h4>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${spellingStatusBadgeClass(coverage)}`}
-                  >
-                    {slideCoverageLabel(coverage)}
-                  </span>
-                  {slideResults.length > 0 && (
-                    <span className="text-xs text-gray-500">
-                      (검토 대상 {slideResults.length}건)
-                    </span>
+                  {pendingIds.length > 0 && (
+                    <label
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-900"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={allPendingSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = somePendingSelected
+                        }}
+                        onChange={() => toggleSlidePendingSelected(slideResults)}
+                        disabled={isBusy}
+                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-300"
+                        title="이 슬라이드의 검토 대기 항목 모두 선택"
+                        aria-label={`슬라이드 ${slide.slide_num} 전체 선택`}
+                      />
+                      슬라이드 선택
+                    </label>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => toggleSlideExpanded(slide.id)}
+                    className="flex flex-wrap items-center gap-2 text-left"
+                    aria-expanded={!isCollapsed}
+                  >
+                    <svg
+                      className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
+                        isCollapsed ? '' : 'rotate-90'
+                      }`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                    <h4 className="text-sm font-semibold text-gray-800">
+                      슬라이드 {slide.slide_num}
+                    </h4>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${spellingStatusBadgeClass(coverage)}`}
+                    >
+                      {slideCoverageLabel(coverage)}
+                    </span>
+                    {slideResults.length > 0 && (
+                      <span className="text-xs text-gray-500">
+                        (검토 대상 {slideResults.length}건
+                        {pendingIds.length > 0 ? ` · 대기 ${pendingIds.length}` : ''})
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400">
+                      {isCollapsed ? '펼치기' : '접기'}
+                    </span>
+                  </button>
                 </div>
                 <p className="mt-1 text-xs text-gray-600">
                   {coverage === 'not_checked' && spellable.length > 0 && results.length > 0
@@ -619,7 +736,8 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                 </p>
               </div>
 
-              {slideResults.length > 0 ? (
+              {!isCollapsed && (
+                slideResults.length > 0 ? (
                 <div className="space-y-3 p-3">
                   {slideResults.map((result) => {
                     const itemStatus = getSpellingItemStatus(result)
@@ -747,9 +865,11 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                       ? '검사 결과가 없습니다. 위 「누락분만 다시 검사」를 실행해 주세요.'
                       : '검사 결과가 없습니다.'}
                 </div>
+              )
               )}
             </div>
-            ))
+              )
+            })
           )}
         </div>
       )
