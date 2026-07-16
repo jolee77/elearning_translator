@@ -107,6 +107,26 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
     )
   }
 
+  const handleReExtract = async () => {
+    if (!project.source_pptx_url) {
+      showToast('PPTX 파일 경로가 없습니다.', 'error')
+      return
+    }
+
+    const hasExistingData = localSlides.length > 0 || slides.length > 0 || project.status !== 'uploaded'
+    if (
+      hasExistingData &&
+      !window.confirm(
+        '다시 추출하면 기존 추출·맞춤법·번역·역번역·전문가 검증 데이터가 모두 삭제됩니다. 계속하시겠습니까?',
+      )
+    ) {
+      return
+    }
+
+    setAutoExtractAttempted(true)
+    await runExtraction()
+  }
+
   const handleSaveEdits = async () => {
     try {
       await bulkUpdate.mutateAsync({ projectId: project.id, slides: localSlides })
@@ -287,8 +307,7 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
           <button
             type="button"
             onClick={() => {
-              setAutoExtractAttempted(true)
-              runExtraction()
+              void handleReExtract()
             }}
             disabled={isBusy || !project.source_pptx_url}
             className="nb-btn-secondary"

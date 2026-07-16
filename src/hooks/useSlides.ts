@@ -126,6 +126,7 @@ export function useExtractSlides() {
       const parsed = await parsePptx(buffer, onProgress)
       const rows = toSlideRows(projectId, parsed)
 
+      // slides 삭제 시 translations / verifications / spelling_results / expert_review_items CASCADE
       const { error: deleteError } = await supabase
         .from('slides')
         .delete()
@@ -133,12 +134,34 @@ export function useExtractSlides() {
 
       if (deleteError) throw deleteError
 
+      const { error: reviewError } = await supabase
+        .from('expert_reviews')
+        .delete()
+        .eq('project_id', projectId)
+
+      if (reviewError) throw reviewError
+
+      // 하위 데이터 삭제 후 상태를 추출 전으로 되돌려 빈 Step3가 done으로 남는 것을 방지
+      const { error: statusError } = await supabase
+        .from('projects')
+        .update({ status: 'uploaded' })
+        .eq('id', projectId)
+
+      if (statusError) throw statusError
+
       if (rows.length === 0) return []
 
       return insertSlideRows(rows, onProgress)
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...slidesQueryKey, variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['translations', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['verifications', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['spelling', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['expert_reviews', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['expert-reviews', variables.projectId] })
     },
   })
 }
