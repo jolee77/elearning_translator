@@ -69,6 +69,9 @@ export async function runSpellingJob(
 
   if (statusError) throw statusError
 
+  // 재실행 시 이전 결과가 잠깐 보이지 않도록 비움 (첫 배치 reset 후부터 누적 표시)
+  queryClient.setQueryData([...spellingQueryKey, projectId], [])
+
   const batches: string[][] = []
   for (let i = 0; i < slideIds.length; i += SPELLING_BATCH_SIZE) {
     batches.push(slideIds.slice(i, i + SPELLING_BATCH_SIZE))
@@ -99,6 +102,9 @@ export async function runSpellingJob(
     const percent = Math.round(((i + 1) / batches.length) * 100)
     onChunkProgress?.(mergeChunkProgress(i + 1, batches.length, 'AI 검사'))
     onProgress?.(percent)
+
+    // 배치마다 즉시 화면에 반영
+    await queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, projectId] })
   }
 
   if (totalResults === 0) {
@@ -107,7 +113,6 @@ export async function runSpellingJob(
     )
   }
 
-  await queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, projectId] })
   await queryClient.invalidateQueries({ queryKey: ['projects'] })
   await queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
 
@@ -156,6 +161,8 @@ export async function runTranslateJob(
 
   await supabase.from('projects').update({ status: 'translating' }).eq('id', projectId)
 
+  queryClient.setQueryData([...translationsQueryKey, projectId], [])
+
   const batches: string[][] = []
   for (let i = 0; i < slideIds.length; i += TRANSLATE_BATCH_SIZE) {
     batches.push(slideIds.slice(i, i + TRANSLATE_BATCH_SIZE))
@@ -173,6 +180,8 @@ export async function runTranslateJob(
 
     const percent = Math.round(((i + 1) / batches.length) * 100)
     onProgress?.(percent)
+
+    await queryClient.invalidateQueries({ queryKey: [...translationsQueryKey, projectId] })
   }
 
   onChunkProgress?.(mergeChunkProgress(batches.length, batches.length, '번역 완료'))
@@ -208,6 +217,8 @@ export async function runVerifyJob(
 
   await supabase.from('projects').update({ status: 'verifying' }).eq('id', projectId)
 
+  queryClient.setQueryData([...verificationsQueryKey, projectId], [])
+
   const batches: string[][] = []
   for (let i = 0; i < translationIds.length; i += VERIFY_BATCH_SIZE) {
     batches.push(translationIds.slice(i, i + VERIFY_BATCH_SIZE))
@@ -227,6 +238,8 @@ export async function runVerifyJob(
 
     const percent = Math.max(5, Math.round(((i + 1) / batches.length) * 100))
     onProgress?.(percent)
+
+    await queryClient.invalidateQueries({ queryKey: [...verificationsQueryKey, projectId] })
   }
 
   onChunkProgress?.(mergeChunkProgress(batches.length, batches.length, '역번역 검증 완료'))

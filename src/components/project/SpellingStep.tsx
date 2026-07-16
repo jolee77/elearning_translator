@@ -396,19 +396,14 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       )
     }
 
-    if (isRunning) {
-      return (
-        <div className="nb-empty-state">
-          <p className="text-sm text-gray-600">
-            추출된 텍스트를 검사 중입니다. 슬라이드 내용은 아직 변경되지 않습니다.
-          </p>
-        </div>
-      )
-    }
-
     if (results.length > 0) {
       return (
         <div className="space-y-4">
+          {isRunning && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-800">
+              검사 진행 중 — 완료된 배치 결과가 아래에 먼저 표시됩니다. 전체 완료 후 검토해 주세요.
+            </div>
+          )}
           <div className="flex flex-wrap gap-2 text-xs">
             <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700">
               검사 대상 {spellableSlideCount}슬라이드
@@ -428,12 +423,14 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
             )}
             {reviewStats.missingSlides > 0 && (
               <span className="rounded-full bg-red-100 px-2.5 py-1 font-medium text-red-800">
-                결과 누락 {reviewStats.missingSlides}슬라이드 — 다시 실행해 주세요
+                {isRunning
+                  ? `검사 대기 ${reviewStats.missingSlides}슬라이드`
+                  : `결과 누락 ${reviewStats.missingSlides}슬라이드 — 다시 실행해 주세요`}
               </span>
             )}
           </div>
 
-          {pendingReview.length > 0 && (
+          {pendingReview.length > 0 && !isRunning && (
             <div className="nb-summary-bar">
               <button
                 type="button"
@@ -462,7 +459,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
             </div>
           )}
 
-          {reviewSettled && approvedResults.length > 0 && (
+          {reviewSettled && approvedResults.length > 0 && !isRunning && (
             <div className="nb-summary-bar">
               <span className="text-xs text-gray-600">
                 변경 선택 {approvedResults.length}건
@@ -677,6 +674,14 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       )
     }
 
+    if (isRunning) {
+      return (
+        <div className="nb-empty-state">
+          <p className="text-sm text-gray-600">첫 배치 검사 중입니다. 완료되는 대로 결과가 표시됩니다.</p>
+        </div>
+      )
+    }
+
     return (
       <div className="nb-empty-state">
         <p className="text-sm text-gray-500">추출된 텍스트에 대해 AI 맞춤법 검사를 실행하세요.</p>
@@ -750,7 +755,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
         <ChunkProgressPanel
           title="맞춤법 검사"
           progress={chunkProgress}
-          hint="추출된 화면텍스트·나레이션을 검사합니다. 다른 페이지로 이동해도 백그라운드에서 계속됩니다."
+          hint="추출된 화면텍스트·나레이션을 검사합니다. 완료된 배치부터 아래에 표시됩니다."
         />
       )}
 

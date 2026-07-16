@@ -275,8 +275,8 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
           progress={chunkProgress}
           hint={
             isTranslating
-              ? `${eligibleSlides.length}개 슬라이드를 3개씩 나누어 번역합니다. 다른 페이지로 이동해도 백그라운드에서 계속됩니다.`
-              : '화면텍스트·나레이션 번역을 4건씩 나누어 역번역·품질 검증합니다. 다른 페이지로 이동해도 백그라운드에서 계속됩니다.'
+              ? `${eligibleSlides.length}개 슬라이드를 3개씩 번역합니다. 완료된 묶음부터 아래에 표시됩니다.`
+              : '번역 항목을 4건씩 역번역합니다. 완료된 묶음부터 아래에 표시됩니다.'
           }
         />
       )}
@@ -288,13 +288,26 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
         </div>
       ) : translations.length === 0 ? (
         <div className="nb-empty-state">
-          <p className="text-sm text-gray-500">번역 결과가 없습니다.</p>
-          <p className="mt-1 text-xs text-gray-400">
-            &quot;번역 실행&quot; 버튼을 눌러 AI 번역을 시작하세요.
-          </p>
+          {isTranslating ? (
+            <p className="text-sm text-gray-600">첫 묶음 번역 중입니다. 완료되는 대로 결과가 표시됩니다.</p>
+          ) : (
+            <>
+              <p className="text-sm text-gray-500">번역 결과가 없습니다.</p>
+              <p className="mt-1 text-xs text-gray-400">
+                &quot;번역 실행&quot; 버튼을 눌러 AI 번역을 시작하세요.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
+          {(isTranslating || isVerifying) && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-800">
+              {isTranslating
+                ? '번역 진행 중 — 완료된 슬라이드가 아래에 먼저 표시됩니다.'
+                : '역번역 검증 진행 중 — 완료된 항목이 아래에 먼저 표시됩니다.'}
+            </div>
+          )}
           {groupedTranslations.map(([slideNum, slideTranslations]) => (
             <div key={slideNum} className="nb-card">
               <div className="nb-card-header">
