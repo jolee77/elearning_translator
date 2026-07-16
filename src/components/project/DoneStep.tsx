@@ -243,7 +243,7 @@ export function DoneStep({ project }: DoneStepProps) {
     return (
       <div className="space-y-4">
         <div>
-          <h3 className="nb-step-title">Step 5. 완료</h3>
+          <h3 className="nb-step-title">Step 6. 완료</h3>
           <p className="nb-step-desc">
             전문가 검증이 완료되면 산출물을 다운로드할 수 있습니다.
           </p>

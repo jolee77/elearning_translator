@@ -121,9 +121,9 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
     <div className="space-y-4">
       <div className="nb-page-toolbar">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">Step 4. 전문가 검증</h3>
+          <h3 className="text-base font-semibold text-gray-900">Step 5. 전문가 검증</h3>
           <p className="mt-0.5 text-sm text-gray-500">
-            외부 전문가에게 검증 링크를 공유합니다. 역번역 결과도 함께 제공됩니다.
+            외부 전문가에게 검증 링크를 공유합니다. Step 4에서 제외한 항목은 링크에 포함되지 않습니다.
           </p>
         </div>
         {hasReview && (
