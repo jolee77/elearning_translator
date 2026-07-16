@@ -2,8 +2,9 @@ import type { QueryClient } from '@tanstack/react-query'
 import { spellingCheck, translateSlides, verifyTranslations } from './claudeApi'
 import { type ChunkProgress, mergeChunkProgress } from './chunkProgress'
 import { hasSpellingTextChanges, normalizeSpellingIssues } from './spellingReview'
+import { filterActiveTranslations } from './slideFields'
 import { supabase } from './supabase'
-import type { SpellingResult } from '../types'
+import type { Slide, SpellingResult } from '../types'
 
 export type AiJobKind = 'spelling' | 'translate' | 'verify'
 
@@ -206,18 +207,32 @@ export async function runVerifyJob(
     projectId: string
   } & AiJobProgressCallbacks,
 ): Promise<void> {
-  const { data: translations, error } = await supabase
-    .from('translations')
-    .select('id')
-    .eq('project_id', projectId)
-    .not('vi_text', 'is', null)
-    .neq('vi_text', '')
+  const [{ data: translations, error }, { data: slides, error: slidesError }] = await Promise.all([
+    supabase
+      .from('translations')
+      .select('id, slide_id, field, vi_text')
+      .eq('project_id', projectId)
+      .not('vi_text', 'is', null)
+      .neq('vi_text', ''),
+    supabase
+      .from('slides')
+      .select('id, slide_type, exclude_from_translation, excluded_fields')
+      .eq('project_id', projectId),
+  ])
 
   if (error) throw error
+  if (slidesError) throw slidesError
 
-  const translationIds = (translations ?? []).map((row) => row.id)
+  const active = filterActiveTranslations(
+    translations ?? [],
+    (slides ?? []) as Pick<
+      Slide,
+      'id' | 'slide_type' | 'exclude_from_translation' | 'excluded_fields'
+    >[],
+  )
+  const translationIds = active.map((row) => row.id)
   if (translationIds.length === 0) {
-    throw new Error('검증할 번역이 없습니다.')
+    throw new Error('검증할 번역이 없습니다. Step 3 제외 설정을 확인해 주세요.')
   }
 
   await supabase.from('projects').update({ status: 'verifying' }).eq('id', projectId)

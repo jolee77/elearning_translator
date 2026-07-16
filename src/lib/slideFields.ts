@@ -95,6 +95,32 @@ export function isNarrationFieldKey(fieldKey: string): boolean {
   return fieldKey === 'narration' || fieldKey === 'tr_narration'
 }
 
+/** Step3 제외(슬라이드 전체·필드)가 번역/검증 대상인지 */
+export function isTranslationFieldExcluded(
+  slide: Pick<Slide, 'slide_type' | 'exclude_from_translation' | 'excluded_fields'>,
+  fieldKey: string,
+): boolean {
+  if (slide.slide_type === 'guide' || slide.exclude_from_translation) return true
+  const excluded = new Set(slide.excluded_fields ?? [])
+  if (excluded.has(fieldKey)) return true
+  if (isNarrationFieldKey(fieldKey)) {
+    return excluded.has(TRANSLATION_NARRATION_FIELD_KEY) || excluded.has('narration')
+  }
+  return false
+}
+
+export function filterActiveTranslations<T extends { slide_id: string; field: string }>(
+  translations: T[],
+  slides: Pick<Slide, 'id' | 'slide_type' | 'exclude_from_translation' | 'excluded_fields'>[],
+): T[] {
+  const slideMap = new Map(slides.map((s) => [s.id, s]))
+  return translations.filter((tr) => {
+    const slide = slideMap.get(tr.slide_id)
+    if (!slide) return false
+    return !isTranslationFieldExcluded(slide, tr.field)
+  })
+}
+
 export function extractFieldBadgeClass(fieldKey: string): string {
   return isNarrationFieldKey(fieldKey) ? 'nb-badge nb-badge--narration' : 'nb-badge nb-badge--screen'
 }

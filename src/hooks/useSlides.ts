@@ -365,12 +365,56 @@ export type SlideExclusionRow = {
   excluded_fields: string[]
 }
 
+/** Step3 제외 반영 후, 제외된 슬라이드·필드의 기존 번역/역번역 결과 정리 */
+async function purgeExcludedTranslations(
+  projectId: string,
+  exclusions: SlideExclusionRow[],
+): Promise<void> {
+  const exclusionById = new Map(exclusions.map((row) => [row.id, row]))
+  const { data: translations, error } = await supabase
+    .from('translations')
+    .select('id, slide_id, field')
+    .eq('project_id', projectId)
+
+  if (error) throw error
+  if (!translations?.length) return
+
+  const idsToDelete: string[] = []
+  for (const tr of translations) {
+    const excl = exclusionById.get(tr.slide_id)
+    if (!excl) continue
+    if (excl.exclude_from_translation) {
+      idsToDelete.push(tr.id)
+      continue
+    }
+    const excluded = new Set(excl.excluded_fields)
+    if (
+      excluded.has(tr.field) ||
+      (tr.field === 'tr_narration' && excluded.has('narration')) ||
+      (tr.field === 'narration' && excluded.has('tr_narration'))
+    ) {
+      idsToDelete.push(tr.id)
+    }
+  }
+
+  if (idsToDelete.length === 0) return
+
+  const { error: verifyDeleteError } = await supabase
+    .from('verifications')
+    .delete()
+    .in('translation_id', idsToDelete)
+  if (verifyDeleteError) throw verifyDeleteError
+
+  const { error: trDeleteError } = await supabase.from('translations').delete().in('id', idsToDelete)
+  if (trDeleteError) throw trDeleteError
+}
+
 export function useSaveSlideExclusions() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async ({
-      projectId: _projectId,
+      projectId,
       exclusions,
     }: {
       projectId: string
@@ -387,9 +431,13 @@ export function useSaveSlideExclusions() {
 
         if (error) throw error
       }
+
+      await purgeExcludedTranslations(projectId, exclusions)
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...slidesQueryKey, variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['translations', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['verifications', variables.projectId] })
     },
   })
 }
@@ -424,6 +472,8 @@ export function useCompleteSlideSelection() {
         if (error) throw error
       }
 
+      await purgeExcludedTranslations(projectId, exclusions)
+
       const { error: statusError } = await supabase
         .from('projects')
         .update({ status: 'selection_done' })
@@ -449,6 +499,8 @@ export function useCompleteSlideSelection() {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] })
       queryClient.invalidateQueries({ queryKey: [...slidesQueryKey, variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['translations', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['verifications', variables.projectId] })
     },
   })
 }

@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx'
 import { SLIDE_TYPE_LABELS, formatNarration, formatScreenText } from './pptxParser'
 import { getLangConfig, NARRATION_FIELD_KEY } from './lang'
-import { fieldKeyLabel } from './slideFields'
+import { fieldKeyLabel, isTranslationFieldExcluded } from './slideFields'
 import type { ChangeLog, ChangeLogAction, Project, Slide, Translation } from '../types'
 
 export function downloadBlob(blob: Blob, filename: string): void {
@@ -116,6 +116,7 @@ function buildTranslationRows(
 
     const screenTranslations = slideTranslations
       .filter((t) => t.field.startsWith('screen_text') || t.field === 'screen_text')
+      .filter((t) => !isTranslationFieldExcluded(slide, t.field))
       .sort((a, b) => a.field.localeCompare(b.field))
 
     for (const tr of screenTranslations) {
@@ -127,7 +128,9 @@ function buildTranslationRows(
     }
 
     const narrationTr = slideTranslations.find(
-      (t) => t.field === NARRATION_FIELD_KEY || t.field === 'narration',
+      (t) =>
+        (t.field === NARRATION_FIELD_KEY || t.field === 'narration') &&
+        !isTranslationFieldExcluded(slide, t.field),
     )
     if (narrationTr) {
       rows.push(

@@ -19,7 +19,12 @@ import {
   useFinalizeVerification,
   useVerifications,
 } from '../../hooks/useVerification'
-import { fieldKeyLabel, extractFieldBadgeClass, extractFieldPanelClass } from '../../lib/slideFields'
+import {
+  fieldKeyLabel,
+  extractFieldBadgeClass,
+  extractFieldPanelClass,
+  filterActiveTranslations,
+} from '../../lib/slideFields'
 import { getLangConfig } from '../../lib/lang'
 import { isStepAccessible, stepPrerequisiteMessage } from '../../lib/projectStatus'
 import type { Project, Translation } from '../../types'
@@ -65,14 +70,26 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
   )
 
   const slideMap = useMemo(() => new Map(slides.map((s) => [s.id, s])), [slides])
+  const activeTranslations = useMemo(
+    () => filterActiveTranslations(translations, slides),
+    [translations, slides],
+  )
+  const activeTranslationIds = useMemo(
+    () => new Set(activeTranslations.map((t) => t.id)),
+    [activeTranslations],
+  )
+  const activeVerifications = useMemo(
+    () => verifications.filter((v) => activeTranslationIds.has(v.translation_id)),
+    [verifications, activeTranslationIds],
+  )
   const verificationByTranslationId = useMemo(
-    () => new Map(verifications.map((v) => [v.translation_id, v])),
-    [verifications],
+    () => new Map(activeVerifications.map((v) => [v.translation_id, v])),
+    [activeVerifications],
   )
 
   const groupedTranslations = useMemo(() => {
     const groups = new Map<number, Translation[]>()
-    for (const tr of translations) {
+    for (const tr of activeTranslations) {
       const slide = slideMap.get(tr.slide_id)
       const slideNum = slide?.slide_num ?? 0
       const list = groups.get(slideNum) ?? []
@@ -80,21 +97,21 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
       groups.set(slideNum, list)
     }
     return [...groups.entries()].sort(([a], [b]) => a - b)
-  }, [translations, slideMap])
+  }, [activeTranslations, slideMap])
 
   useEffect(() => {
     const next: Record<string, string> = {}
-    for (const tr of translations) {
+    for (const tr of activeTranslations) {
       next[tr.id] = localTexts[tr.id] ?? tr.vi_text
     }
     setLocalTexts(next)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [translations])
+  }, [activeTranslations])
 
   const reviewSummary = useMemo(() => {
     let passed = 0
     let needsReview = 0
-    for (const v of verifications) {
+    for (const v of activeVerifications) {
       if (needsVerificationReview(v)) {
         needsReview++
       } else {
@@ -102,7 +119,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
       }
     }
     return { passed, needsReview }
-  }, [verifications])
+  }, [activeVerifications])
 
   const handleRunTranslation = () => {
     if (!accessible) {
@@ -127,7 +144,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
       showToast(stepPrerequisiteMessage(4), 'error')
       return
     }
-    if (translations.length === 0) {
+    if (activeTranslations.length === 0) {
       showToast('먼저 번역을 실행해 주세요.', 'error')
       return
     }
@@ -173,15 +190,15 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
       showToast('저장되지 않은 변경사항이 있습니다.', 'error')
       return
     }
-    if (translations.length === 0) {
+    if (activeTranslations.length === 0) {
       showToast('번역 결과가 없습니다.', 'error')
       return
     }
-    if (verifications.length === 0) {
+    if (activeVerifications.length === 0) {
       showToast('역번역 검증을 먼저 실행해 주세요.', 'error')
       return
     }
-    const missingVerificationCount = translations.filter(
+    const missingVerificationCount = activeTranslations.filter(
       (t) => t.vi_text?.trim() && !verificationByTranslationId.has(t.id),
     ).length
     if (missingVerificationCount > 0) {
@@ -242,7 +259,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
           <button
             type="button"
             onClick={handleRunVerification}
-            disabled={isBusy || !accessible || translations.length === 0}
+            disabled={isBusy || !accessible || activeTranslations.length === 0}
             className="nb-btn-secondary"
           >
             {isVerifying && <Spinner />}
@@ -253,8 +270,8 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
             onClick={handleComplete}
             disabled={
               isBusy ||
-              translations.length === 0 ||
-              verifications.length === 0 ||
+              activeTranslations.length === 0 ||
+              activeVerifications.length === 0 ||
               dirtyIds.size > 0
             }
             className="nb-btn-primary"
@@ -269,7 +286,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
         <div className="nb-alert nb-alert--warning">{stepPrerequisiteMessage(4)}</div>
       )}
 
-      {verifications.length > 0 && (
+      {activeVerifications.length > 0 && (
         <div className="nb-summary-bar">
           <span className="font-medium text-emerald-700">일치 {reviewSummary.passed}건</span>
           {reviewSummary.needsReview > 0 && (
@@ -316,7 +333,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
           <Spinner className="text-gray-400" />
           <p className="text-sm text-gray-500">데이터를 불러오는 중...</p>
         </div>
-      ) : translations.length === 0 ? (
+      ) : activeTranslations.length === 0 ? (
         <div className="nb-empty-state">
           {isTranslating ? (
             <p className="text-sm text-gray-600">첫 묶음 번역 중입니다. 완료되는 대로 결과가 표시됩니다.</p>
@@ -324,7 +341,8 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
             <>
               <p className="text-sm text-gray-500">번역 결과가 없습니다.</p>
               <p className="mt-1 text-xs text-gray-400">
-                &quot;번역 실행&quot; 버튼을 눌러 AI 번역을 시작하세요.
+                Step 3에서 제외한 항목은 표시되지 않습니다. &quot;번역 실행&quot;으로 AI 번역을
+                시작하세요.
               </p>
             </>
           )}
@@ -382,7 +400,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
                       const isDirty = dirtyIds.has(tr.id)
                       const verification = verificationByTranslationId.get(tr.id)
                       const showVerificationColumn =
-                        verification != null || verifications.length > 0
+                        verification != null || activeVerifications.length > 0
 
                       return (
                         <div key={tr.id} className="px-4 py-3">
