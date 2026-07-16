@@ -520,8 +520,16 @@ function classifyShapeRegion(x: number, y: number, w: number, h: number): ShapeR
   const { cx, cy } = shapeCenterRatio(x, y, w, h)
 
   if (headerR > REGION_THRESHOLD && headerR >= screenR) return 'header'
-  if (imgR > REGION_THRESHOLD) return 'image_num'
-  if (descR > REGION_THRESHOLD) return 'desc'
+
+  // desc/image_num은 screen과 겹침. 중심이 화면 밴드(x 13~75%, y 8~78%) 안이면
+  // 화면 UI 라벨로 보고 screen 우선 (우측 전용 설명·이미지번호 패널만 제외).
+  const centerInScreen = cx > 0.13 && cx < 0.75 && cy > 0.08 && cy < 0.78
+  const preferScreenOverSidePanels = screenR > REGION_THRESHOLD && centerInScreen
+
+  if (!preferScreenOverSidePanels) {
+    if (imgR > REGION_THRESHOLD) return 'image_num'
+    if (descR > REGION_THRESHOLD) return 'desc'
+  }
 
   // 화면·나레이션 스크립트 밴드가 겹치는 구간 — 중심 좌표로 판별
   if (screenR > REGION_THRESHOLD && narrR > REGION_THRESHOLD) {
