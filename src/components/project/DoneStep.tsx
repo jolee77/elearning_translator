@@ -15,7 +15,7 @@ import { useTranslations } from '../../hooks/useTranslation'
 import { generateVnPptx } from '../../lib/pptxGenerator'
 import { isEventChangeLog } from '../../lib/textChangeSummary'
 import { supabase } from '../../lib/supabase'
-import { downloadBlob, generateTranslationXlsx, type XlsxActorContext } from '../../lib/xlsxGenerator'
+import { downloadBlob, downloadExtractionXlsx, generateTranslationXlsx, type XlsxActorContext } from '../../lib/xlsxGenerator'
 import { Spinner } from '../ui/Spinner'
 import { TextChangeSummaryPanel } from './TextChangeSummaryPanel'
 import type { ChangeLog, ChangeLogAction, Project } from '../../types'
@@ -105,7 +105,7 @@ export function DoneStep({ project }: DoneStepProps) {
   const { data: translations = [] } = useTranslations(project.id)
   const { data: spellingResults = [] } = useSpellingResults(project.id)
 
-  const [downloading, setDownloading] = useState<'pptx' | 'xlsx' | 'zip' | null>(null)
+  const [downloading, setDownloading] = useState<'pptx' | 'xlsx' | 'zip' | 'extract' | null>(null)
 
   const stats = getExpertReviewStats(items)
   const baseName = safeFilename(project.title)
@@ -219,6 +219,22 @@ export function DoneStep({ project }: DoneStepProps) {
     }
   }
 
+  const handleDownloadExtractionOnly = () => {
+    if (slides.length === 0) {
+      showToast('슬라이드 데이터가 없습니다.', 'error')
+      return
+    }
+    setDownloading('extract')
+    try {
+      downloadExtractionXlsx(slides, `${baseName}_추출결과.xlsx`)
+      showToast('추출 결과 다운로드가 완료되었습니다.', 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '엑셀 생성에 실패했습니다.', 'error')
+    } finally {
+      setDownloading(null)
+    }
+  }
+
   const isBusy = downloading !== null
   const isProjectDone = project.status === 'done'
 
@@ -327,12 +343,28 @@ export function DoneStep({ project }: DoneStepProps) {
         <p className="mt-1 text-xs text-gray-500">
           VN 스토리보드(PPTX), 번역 결과(엑셀), 전체 산출물(ZIP)을 다운로드할 수 있습니다.
         </p>
+        {translations.length === 0 && (
+          <div className="nb-alert nb-alert--warning mt-3">
+            <p className="text-sm font-medium">번역 데이터가 없어 VN·번역 산출물을 만들 수 없습니다.</p>
+            <p className="mt-1 text-xs">
+              재추출 등으로 번역·역번역이 삭제된 경우입니다. Step 3에서 번역·역번역을 다시 실행한 뒤
+              이용해 주세요.
+            </p>
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
             disabled={isBusy || !project.source_pptx_url || translations.length === 0}
             onClick={handleDownloadPptx}
             className="nb-btn-secondary"
+            title={
+              translations.length === 0
+                ? '번역 데이터가 필요합니다'
+                : !project.source_pptx_url
+                  ? '원본 PPTX가 없습니다'
+                  : undefined
+            }
           >
             {downloading === 'pptx' && <Spinner />}
             {downloading === 'pptx' ? '생성 중...' : 'VN 스토리보드 다운로드 (PPTX)'}
@@ -342,6 +374,13 @@ export function DoneStep({ project }: DoneStepProps) {
             disabled={isBusy || slides.length === 0 || translations.length === 0}
             onClick={handleDownloadXlsx}
             className="nb-btn-secondary"
+            title={
+              translations.length === 0
+                ? '번역 데이터가 필요합니다'
+                : slides.length === 0
+                  ? '슬라이드 데이터가 없습니다'
+                  : undefined
+            }
           >
             {downloading === 'xlsx' && <Spinner />}
             {downloading === 'xlsx' ? '생성 중...' : '번역 결과 다운로드 (XLSX)'}
@@ -356,11 +395,30 @@ export function DoneStep({ project }: DoneStepProps) {
             }
             onClick={handleDownloadZip}
             className="nb-btn-primary"
+            title={
+              translations.length === 0
+                ? '번역 데이터가 필요합니다'
+                : undefined
+            }
           >
             {downloading === 'zip' && <Spinner className="text-white" />}
             {downloading === 'zip' ? '생성 중...' : '변경이력 포함 전체 다운로드 (ZIP)'}
           </button>
         </div>
+        {slides.length > 0 && translations.length === 0 && (
+          <div className="mt-3 border-t border-gray-100 pt-3">
+            <p className="text-xs text-gray-500">번역 없이도 받을 수 있는 파일</p>
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={handleDownloadExtractionOnly}
+              className="nb-btn-secondary mt-2"
+            >
+              {downloading === 'extract' && <Spinner />}
+              {downloading === 'extract' ? '생성 중...' : '추출 결과만 다운로드 (XLSX)'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
