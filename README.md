@@ -73,11 +73,14 @@ npm run build
 
 ### 맞춤법·전문가 제외 UX (2026-07-16)
 - Step 2: 슬라이드 접기/펼치기, 슬라이드 체크 시 해당 슬라이드 검토 대기 항목 일괄 선택
-- Step 4: 항목·슬라이드별 「전문가 제외」 → `translations.exclude_from_expert_review` (링크 생성 시 제외)
+- Step 3: 슬라이드·텍스트 단위 제외 (`exclude_from_translation` + `excluded_fields`) — 번역·전문가 검증에 공통
+- Step 4: 제외 선택 UI 없음 (Step 3 결과만 사용)
 
 DB 마이그레이션:
 - `supabase/migrations/20260716140000_slides_exclude_from_translation.sql`
 - `supabase/migrations/20260716150000_exclude_from_expert_review.sql`
+- `supabase/migrations/20260716160000_projects_status_selection_done.sql`
+- `supabase/migrations/20260716170000_slides_excluded_fields.sql`
 
 ## 최근 수정 (2026-07-10)
 

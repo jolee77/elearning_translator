@@ -192,7 +192,7 @@ serve(async (req) => {
     const { data: slides, error: slidesError } = await serviceClient
       .from('slides')
       .select(
-        'id, project_id, slide_num, slide_type, screen_num, screen_text, narration, exclude_from_translation',
+        'id, project_id, slide_num, slide_type, screen_num, screen_text, narration, exclude_from_translation, excluded_fields',
       )
       .eq('project_id', body.project_id)
       .in('id', body.slide_ids)
@@ -207,7 +207,10 @@ serve(async (req) => {
     }
 
     const slideRows = (slides as SlideRow[]).filter(
-      (slide) => slide.slide_type !== 'guide' && !slide.exclude_from_translation,
+      (slide) =>
+        slide.slide_type !== 'guide' &&
+        !slide.exclude_from_translation &&
+        buildTranslationFieldKeys(slide).length > 0,
     )
 
     if (slideRows.length === 0) {

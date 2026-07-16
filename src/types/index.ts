@@ -109,8 +109,10 @@ export interface Slide {
   screen_desc: string | null
   image_nums: string | null
   narration: SlideTextBox[] | string | null
-  /** true이면 번역·역번역·산출물에서 제외 */
+  /** true이면 슬라이드 전체 번역·역번역·산출물에서 제외 */
   exclude_from_translation: boolean
+  /** 필드 단위 제외 (screen_text_*, tr_narration). 번역·전문가 검증 공통 */
+  excluded_fields: string[]
   created_at: string
 }
 

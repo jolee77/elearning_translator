@@ -17,6 +17,7 @@ export interface SlideRow {
   screen_text: SlideTextBox[] | string | null
   narration: SlideTextBox[] | string | null
   exclude_from_translation?: boolean | null
+  excluded_fields?: string[] | null
 }
 
 export function normalizeNarration(
@@ -130,27 +131,28 @@ export function buildTranslationFieldKeys(slide: SlideRow): Array<{
   ko_text: string
 }> {
   const fields: Array<{ field_key: string; ko_text: string }> = []
+  const excluded = new Set(slide.excluded_fields ?? [])
   const screenText = normalizeScreenText(slide.screen_text)
 
   if (screenText?.length) {
     screenText.forEach((box, index) => {
       const text = boxText(box, index)
       if (text) {
-        fields.push({
-          field_key: `screen_text_${box.id || index}`,
-          ko_text: text,
-        })
+        const field_key = `screen_text_${box.id || index}`
+        if (!excluded.has(field_key)) {
+          fields.push({ field_key, ko_text: text })
+        }
       }
     })
   } else {
     const combined = formatScreenText(slide.screen_text)
-    if (combined.trim()) {
+    if (combined.trim() && !excluded.has('screen_text')) {
       fields.push({ field_key: 'screen_text', ko_text: combined })
     }
   }
 
   const narrationText = formatNarration(slide.narration).trim()
-  if (narrationText) {
+  if (narrationText && !excluded.has(NARRATION_FIELD_KEY) && !excluded.has('narration')) {
     fields.push({
       field_key: NARRATION_FIELD_KEY,
       ko_text: narrationText,

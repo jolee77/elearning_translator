@@ -27,6 +27,7 @@ function normalizeSlide(slide: Slide): Slide {
     screen_text: normalizeScreenText(slide.screen_text),
     narration: normalizeNarration(slide.narration),
     exclude_from_translation: slide.exclude_from_translation === true,
+    excluded_fields: Array.isArray(slide.excluded_fields) ? slide.excluded_fields : [],
   }
 }
 
@@ -82,6 +83,7 @@ function toSlideRows(projectId: string, parsed: ParsedSlide[]): SlideInsert[] {
     image_nums: slide.image_nums,
     narration: serializeNarrationForDb(slide.narration) as unknown as SlideInsert['narration'],
     exclude_from_translation: false,
+    excluded_fields: [],
   }))
 }
 
@@ -357,6 +359,12 @@ export function isTranslateEligibleSlide(slide: Pick<Slide, 'slide_type' | 'excl
   return slide.slide_type !== 'guide' && !slide.exclude_from_translation
 }
 
+export type SlideExclusionRow = {
+  id: string
+  exclude_from_translation: boolean
+  excluded_fields: string[]
+}
+
 export function useSaveSlideExclusions() {
   const queryClient = useQueryClient()
 
@@ -366,12 +374,15 @@ export function useSaveSlideExclusions() {
       exclusions,
     }: {
       projectId: string
-      exclusions: { id: string; exclude_from_translation: boolean }[]
+      exclusions: SlideExclusionRow[]
     }): Promise<void> => {
       for (const row of exclusions) {
         const { error } = await supabase
           .from('slides')
-          .update({ exclude_from_translation: row.exclude_from_translation })
+          .update({
+            exclude_from_translation: row.exclude_from_translation,
+            excluded_fields: row.excluded_fields,
+          })
           .eq('id', row.id)
 
         if (error) throw error
@@ -391,18 +402,23 @@ export function useCompleteSlideSelection() {
     mutationFn: async ({
       projectId,
       exclusions,
-      includedCount,
-      excludedCount,
+      includedSlideCount,
+      excludedSlideCount,
+      excludedFieldCount,
     }: {
       projectId: string
-      exclusions: { id: string; exclude_from_translation: boolean }[]
-      includedCount: number
-      excludedCount: number
+      exclusions: SlideExclusionRow[]
+      includedSlideCount: number
+      excludedSlideCount: number
+      excludedFieldCount: number
     }): Promise<void> => {
       for (const row of exclusions) {
         const { error } = await supabase
           .from('slides')
-          .update({ exclude_from_translation: row.exclude_from_translation })
+          .update({
+            exclude_from_translation: row.exclude_from_translation,
+            excluded_fields: row.excluded_fields,
+          })
           .eq('id', row.id)
 
         if (error) throw error
@@ -420,8 +436,12 @@ export function useCompleteSlideSelection() {
           project_id: projectId,
           user_id: user.id,
           action: 'slide_selection_done',
-          detail: `번역 대상 선택 완료 (포함 ${includedCount}·제외 ${excludedCount})`,
-          metadata: { included: includedCount, excluded: excludedCount },
+          detail: `번역 대상 선택 완료 (슬라이드 포함 ${includedSlideCount}·제외 ${excludedSlideCount}, 필드 제외 ${excludedFieldCount})`,
+          metadata: {
+            included_slides: includedSlideCount,
+            excluded_slides: excludedSlideCount,
+            excluded_fields: excludedFieldCount,
+          },
         })
       }
     },

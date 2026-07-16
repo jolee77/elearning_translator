@@ -58,7 +58,8 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 - `id`, `project_id`, `slide_num`, `slide_type`, `screen_num`, `course_name`, `chapter_name`
 - `current_section` (목차 — `menu_text` 아님)
 - `screen_text` (text — JSON 문자열), `screen_desc`, `image_nums` (`image_num` 아님), `narration`, `created_at`
-- `exclude_from_translation` (boolean, 기본 false) — Step3에서 번역 제외 선택한 슬라이드
+- `exclude_from_translation` (boolean, 기본 false) — Step3에서 슬라이드 전체 제외
+- `excluded_fields` (text[], 기본 {}) — Step3에서 필드 단위 제외 (`screen_text_*`, `tr_narration`)
 
 ### spelling_results
 - `id`, `project_id`, `slide_id`, `field`, `original`, `suggestion`, `applied`, `skipped`, `committed_to_slide`, `issues`, `created_at`
@@ -100,8 +101,8 @@ uploaded → extracted → spelling → spelling_done → selection_done → tra
 /projects/:id           프로젝트 상세 (단계별 스텝)
   Step1: 추출 확인
   Step2: 맞춤법 검사 — 슬라이드 접기·펼치기, 슬라이드 단위 일괄 선택, 변경·검토 필요 항목만 표시
-  Step3: 번역 대상 선택 — 추출 내용 확인 후 exclude_from_translation으로 제외
-  Step4: 번역·역번역 검증 (통합) — 항목·슬라이드별 전문가 검증 제외 가능
+  Step3: 번역 대상 선택 — 슬라이드·텍스트 단위 제외 (번역·전문가 검증에 공통 반영)
+  Step4: 번역·역번역 검증 — Step3 제외분 미포함 (추가 제외 선택 없음)
   Step5: 전문가 검증 요청 (링크 생성) + 검토 현황 표
   Step6: 완료 → 다운로드
 /review/:token          전문가 검증 (로그인 없이 토큰, 역번역 포함)
@@ -249,9 +250,8 @@ const KO_CPM = 320
 ## 구현 현황 (2026-07-16)
 
 ### 완료
+- [x] Step 3에서 슬라이드·텍스트 단위 제외 통합 (번역·전문가 공통), Step 4 제외 UI 제거
 - [x] `projects_status_check`에 `selection_done` 추가 (번역 대상 선택 완료 실패 수정)
-- [x] Step 2 맞춤법: 슬라이드 접기/펼치기 + 슬라이드 단위 선택(해당 슬라이드 추출 항목 일괄)
-- [x] Step 4: 항목·슬라이드별 전문가 검증 제외 (`translations.exclude_from_expert_review`)
 - [x] Step 3 번역 대상 선택: 추출 내용 확인·제외 체크·`selection_done` 후 번역 진행
 - [x] `slides.exclude_from_translation` + 번역/엑셀에서 제외 슬라이드 필터
 - [x] 맞춤법 Step 2: 이상 없음·검사 제외는 목록 숨김, 변경·검토·미반영만 표시

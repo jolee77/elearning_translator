@@ -8,7 +8,6 @@ import { useSlides } from '../../hooks/useSlides'
 import {
   getNarrationSpeedInfo,
   NARRATION_FIELD_KEY,
-  useSetExpertReviewExclusions,
   useTranslations,
   useUpdateTranslation,
 } from '../../hooks/useTranslation'
@@ -44,14 +43,11 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
   const { data: verifications = [], isLoading: verificationsLoading } = useVerifications(project.id)
 
   const updateTranslation = useUpdateTranslation()
-  const setExpertExclusions = useSetExpertReviewExclusions()
   const finalize = useFinalizeVerification()
 
   const [localTexts, setLocalTexts] = useState<Record<string, string>>({})
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
-  const [excludedExpertIds, setExcludedExpertIds] = useState<Set<string>>(new Set())
   const [collapsedSlideNums, setCollapsedSlideNums] = useState<Set<number>>(new Set())
-  const [exclusionDirty, setExclusionDirty] = useState(false)
 
   const isTranslating = translateJob?.status === 'running'
   const isVerifying = verifyJob?.status === 'running'
@@ -95,13 +91,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [translations])
 
-  useEffect(() => {
-    if (exclusionDirty) return
-    setExcludedExpertIds(
-      new Set(translations.filter((t) => t.exclude_from_expert_review).map((t) => t.id)),
-    )
-  }, [translations, exclusionDirty])
-
   const reviewSummary = useMemo(() => {
     let passed = 0
     let needsReview = 0
@@ -114,12 +103,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     }
     return { passed, needsReview }
   }, [verifications])
-
-  const expertExclusionStats = useMemo(() => {
-    const excluded = excludedExpertIds.size
-    const included = translations.length - excluded
-    return { excluded, included }
-  }, [translations.length, excludedExpertIds])
 
   const handleRunTranslation = () => {
     if (!accessible) {
@@ -185,52 +168,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     }
   }
 
-  const toggleFieldExpertExclude = (id: string) => {
-    setExclusionDirty(true)
-    setExcludedExpertIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const toggleSlideExpertExclude = (slideTranslations: Translation[]) => {
-    setExclusionDirty(true)
-    const ids = slideTranslations.map((t) => t.id)
-    setExcludedExpertIds((prev) => {
-      const next = new Set(prev)
-      const allExcluded = ids.every((id) => next.has(id))
-      if (allExcluded) {
-        for (const id of ids) next.delete(id)
-      } else {
-        for (const id of ids) next.add(id)
-      }
-      return next
-    })
-  }
-
-  const toggleSlideCollapsed = (slideNum: number) => {
-    setCollapsedSlideNums((prev) => {
-      const next = new Set(prev)
-      if (next.has(slideNum)) next.delete(slideNum)
-      else next.add(slideNum)
-      return next
-    })
-  }
-
-  const saveExpertExclusions = async () => {
-    const updates = translations.map((t) => ({
-      id: t.id,
-      exclude_from_expert_review: excludedExpertIds.has(t.id),
-    }))
-    await setExpertExclusions.mutateAsync({
-      projectId: project.id,
-      updates,
-    })
-    setExclusionDirty(false)
-  }
-
   const handleComplete = async () => {
     if (dirtyIds.size > 0) {
       showToast('저장되지 않은 변경사항이 있습니다.', 'error')
@@ -254,15 +191,8 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
       )
       return
     }
-    if (expertExclusionStats.included === 0) {
-      showToast('전문가 검증에 포함할 항목이 최소 1건 필요합니다.', 'error')
-      return
-    }
 
     try {
-      if (exclusionDirty) {
-        await saveExpertExclusions()
-      }
       await finalize.mutateAsync({ projectId: project.id })
       showToast('번역·역번역 검증이 완료되었습니다. 전문가 검증을 요청할 수 있습니다.', 'success')
       onStepComplete?.()
@@ -271,23 +201,19 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     }
   }
 
-  const handleSaveExclusionsClick = async () => {
-    try {
-      await saveExpertExclusions()
-      showToast(
-        `전문가 검증 제외 설정을 저장했습니다. (포함 ${expertExclusionStats.included}·제외 ${expertExclusionStats.excluded})`,
-        'success',
-      )
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : '제외 설정 저장에 실패했습니다.', 'error')
-    }
+  const toggleSlideCollapsed = (slideNum: number) => {
+    setCollapsedSlideNums((prev) => {
+      const next = new Set(prev)
+      if (next.has(slideNum)) next.delete(slideNum)
+      else next.add(slideNum)
+      return next
+    })
   }
 
   const isBusy =
     isTranslating ||
     isVerifying ||
     updateTranslation.isPending ||
-    setExpertExclusions.isPending ||
     finalize.isPending
 
   const isLoading = translationsLoading || verificationsLoading
@@ -299,8 +225,8 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
         <div>
           <h3 className="text-base font-semibold text-gray-900">Step 4. 번역·역번역 검증</h3>
           <p className="mt-0.5 text-sm text-gray-500">
-            AI 번역 후 화면텍스트·나레이션 모두 역번역으로 품질을 확인합니다. 전문가 검증에서 제외할
-            항목·슬라이드를 선택할 수 있습니다.
+            AI 번역 후 화면텍스트·나레이션을 역번역으로 확인합니다. 제외 대상은 Step 3에서 이미
+            반영되어 있습니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -329,8 +255,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
               isBusy ||
               translations.length === 0 ||
               verifications.length === 0 ||
-              dirtyIds.size > 0 ||
-              expertExclusionStats.included === 0
+              dirtyIds.size > 0
             }
             className="nb-btn-primary"
           >
@@ -355,30 +280,10 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
               </span>
             </>
           )}
-        </div>
-      )}
-
-      {translations.length > 0 && (
-        <div className="nb-summary-bar">
-          <span className="text-xs text-gray-700">
-            전문가 검증 포함 {expertExclusionStats.included}건
-            {expertExclusionStats.excluded > 0 && (
-              <> · 제외 {expertExclusionStats.excluded}건</>
-            )}
-            {exclusionDirty && <span className="ml-1 text-amber-700">(미저장)</span>}
-          </span>
-          <button
-            type="button"
-            onClick={handleSaveExclusionsClick}
-            disabled={isBusy || !exclusionDirty}
-            className="nb-btn-secondary text-xs"
-          >
-            {setExpertExclusions.isPending ? '저장 중...' : '전문가 제외 설정 저장'}
-          </button>
           <button
             type="button"
             onClick={() => setCollapsedSlideNums(new Set())}
-            className="nb-btn-secondary text-xs"
+            className="nb-btn-secondary ml-auto text-xs"
           >
             모두 펼치기
           </button>
@@ -435,71 +340,37 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
           )}
           {groupedTranslations.map(([slideNum, slideTranslations]) => {
             const isCollapsed = collapsedSlideNums.has(slideNum)
-            const slideIds = slideTranslations.map((t) => t.id)
-            const allExcluded = slideIds.every((id) => excludedExpertIds.has(id))
-            const someExcluded = slideIds.some((id) => excludedExpertIds.has(id)) && !allExcluded
-
             return (
-              <div
-                key={slideNum}
-                className={`nb-card ${allExcluded ? 'opacity-70' : ''}`}
-              >
+              <div key={slideNum} className="nb-card">
                 <div className="nb-card-header">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label
-                      className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700"
-                      onClick={(e) => e.stopPropagation()}
+                  <button
+                    type="button"
+                    onClick={() => toggleSlideCollapsed(slideNum)}
+                    className="flex flex-wrap items-center gap-2 text-left"
+                    aria-expanded={!isCollapsed}
+                  >
+                    <svg
+                      className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
+                        isCollapsed ? '' : 'rotate-90'
+                      }`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden
                     >
-                      <input
-                        type="checkbox"
-                        checked={allExcluded}
-                        ref={(el) => {
-                          if (el) el.indeterminate = someExcluded
-                        }}
-                        onChange={() => toggleSlideExpertExclude(slideTranslations)}
-                        disabled={isBusy}
-                        className="rounded border-gray-300 text-[#162b52] focus:ring-[#162b52]"
-                        title="이 슬라이드 항목을 전문가 검증에서 모두 제외"
-                        aria-label={`슬라이드 ${slideNum} 전문가 검증 제외`}
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5l7 7-7 7"
                       />
-                      슬라이드 제외
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => toggleSlideCollapsed(slideNum)}
-                      className="flex flex-wrap items-center gap-2 text-left"
-                      aria-expanded={!isCollapsed}
-                    >
-                      <svg
-                        className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
-                          isCollapsed ? '' : 'rotate-90'
-                        }`}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        aria-hidden
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 5l7 7-7 7"
-                        />
-                      </svg>
-                      <h4 className="text-sm font-semibold text-gray-800">슬라이드 {slideNum}</h4>
-                      <span className="text-xs text-gray-500">
-                        {slideTranslations.length}항목
-                        {allExcluded
-                          ? ' · 전부 제외'
-                          : someExcluded
-                            ? ` · 일부 제외`
-                            : ''}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {isCollapsed ? '펼치기' : '접기'}
-                      </span>
-                    </button>
-                  </div>
+                    </svg>
+                    <h4 className="text-sm font-semibold text-gray-800">슬라이드 {slideNum}</h4>
+                    <span className="text-xs text-gray-500">{slideTranslations.length}항목</span>
+                    <span className="text-xs text-gray-400">
+                      {isCollapsed ? '펼치기' : '접기'}
+                    </span>
+                  </button>
                 </div>
                 {!isCollapsed && (
                   <div className="divide-y divide-gray-100">
@@ -512,30 +383,11 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
                       const verification = verificationByTranslationId.get(tr.id)
                       const showVerificationColumn =
                         verification != null || verifications.length > 0
-                      const excludedFromExpert = excludedExpertIds.has(tr.id)
 
                       return (
-                        <div
-                          key={tr.id}
-                          className={`px-4 py-3 ${excludedFromExpert ? 'bg-gray-50/80' : ''}`}
-                        >
+                        <div key={tr.id} className="px-4 py-3">
                           <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700">
-                              <input
-                                type="checkbox"
-                                checked={excludedFromExpert}
-                                onChange={() => toggleFieldExpertExclude(tr.id)}
-                                disabled={isBusy}
-                                className="rounded border-gray-300 text-[#162b52] focus:ring-[#162b52]"
-                              />
-                              전문가 제외
-                            </label>
                             <span className="nb-badge">{fieldKeyLabel(tr.field)}</span>
-                            {excludedFromExpert && (
-                              <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-600">
-                                전문가 검증 제외
-                              </span>
-                            )}
                             {isNarration && speedInfo && (
                               <span
                                 className={`text-xs ${
