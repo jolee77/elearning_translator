@@ -155,12 +155,18 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
 
   const handleSave = async (translation: Translation) => {
     const viText = localTexts[translation.id] ?? translation.vi_text
+    const slide = slideMap.get(translation.slide_id)
+    const stage = verificationByTranslationId.has(translation.id) ? 'verification' : 'translation'
     try {
       await updateTranslation.mutateAsync({
         id: translation.id,
         projectId: project.id,
         viText,
         targetLang: project.target_lang,
+        stage,
+        slideId: translation.slide_id,
+        slideNum: slide?.slide_num ?? 0,
+        field: translation.field,
       })
       setDirtyIds((prev) => {
         const next = new Set(prev)

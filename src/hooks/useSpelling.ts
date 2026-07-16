@@ -195,9 +195,21 @@ async function commitSpellingResultToSlide(
     const { error: logError } = await supabase.from('change_logs').insert({
       project_id: projectId,
       user_id: userId,
+      slide_id: slide.id,
+      stage: 'spelling',
+      field: result.field,
+      before_value: result.original,
+      after_value: result.suggestion,
       action: 'spelling_applied',
       detail: `슬라이드 ${slide.slide_num} ${result.field} 수정 적용`,
-      metadata: { stage: 'spelling', spelling_result_id: result.id },
+      metadata: {
+        stage: 'spelling',
+        spelling_result_id: result.id,
+        slide_num: slide.slide_num,
+        field: result.field,
+        before: result.original,
+        after: result.suggestion,
+      },
     })
 
     if (logError) throw new Error(logError.message)

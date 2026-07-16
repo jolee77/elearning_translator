@@ -35,11 +35,17 @@ export type ChangeLogAction =
   | 'pptx_uploaded'
   | 'extraction_done'
   | 'spelling_applied'
+  | 'spelling_reverted'
   | 'translation_done'
+  | 'translation_edited'
   | 'verification_applied'
+  | 'verification_edited'
   | 'expert_review_sent'
+  | 'expert_review_edited'
   | 'expert_review_done'
   | 'download'
+
+export type ChangeLogStage = 'spelling' | 'translation' | 'verification' | 'expert_review'
 
 // ─── PPTX 추출 데이터 ───────────────────────────────────────────────────────
 
@@ -199,10 +205,17 @@ export interface ChangeLog {
   id: string
   project_id: string
   user_id: string | null
-  action: ChangeLogAction
+  action: ChangeLogAction | null
   detail: string | null
   metadata: Record<string, unknown> | null
   changed_at: string
+  /** 필드 단위 텍스트 변경 (이벤트 이력과 공존) */
+  slide_id?: string | null
+  stage?: ChangeLogStage | null
+  field?: string | null
+  before_value?: string | null
+  after_value?: string | null
+  changed_by?: string | null
 }
 
 // ─── Supabase Database 타입 ─────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import JSZip from 'jszip'
 import {
   getExpertReviewStats,
@@ -9,12 +9,15 @@ import {
 import { useAuth } from '../../hooks/useAuth'
 import { STORAGE_BUCKET } from '../../hooks/useProject'
 import { useSlides } from '../../hooks/useSlides'
+import { useSpellingResults } from '../../hooks/useSpelling'
 import { useToast } from '../../hooks/ToastProvider'
 import { useTranslations } from '../../hooks/useTranslation'
 import { generateVnPptx } from '../../lib/pptxGenerator'
+import { isEventChangeLog } from '../../lib/textChangeSummary'
 import { supabase } from '../../lib/supabase'
 import { downloadBlob, generateTranslationXlsx } from '../../lib/xlsxGenerator'
 import { Spinner } from '../ui/Spinner'
+import { TextChangeSummaryPanel } from './TextChangeSummaryPanel'
 import type { ChangeLog, ChangeLogAction, Project } from '../../types'
 
 interface DoneStepProps {
@@ -26,9 +29,13 @@ const ACTION_LABELS: Record<ChangeLogAction, string> = {
   pptx_uploaded: 'PPTX 업로드',
   extraction_done: '추출 완료',
   spelling_applied: '맞춤법 반영',
+  spelling_reverted: '맞춤법 되돌림',
   translation_done: '번역 완료',
+  translation_edited: '번역문 수정',
   verification_applied: '역번역 검증 반영',
+  verification_edited: '역번역 후 수정',
   expert_review_sent: '전문가 검증 요청',
+  expert_review_edited: '전문가 번역 수정',
   expert_review_done: '전문가 검증 완료',
   download: '다운로드',
 }
@@ -65,11 +72,17 @@ export function DoneStep({ project }: DoneStepProps) {
   const { data: changeLogs = [], isLoading } = useChangeLogs(project.id)
   const { data: slides = [] } = useSlides(project.id)
   const { data: translations = [] } = useTranslations(project.id)
+  const { data: spellingResults = [] } = useSpellingResults(project.id)
 
   const [downloading, setDownloading] = useState<'pptx' | 'xlsx' | 'zip' | null>(null)
 
   const stats = getExpertReviewStats(items)
   const baseName = safeFilename(project.title)
+  const slideNumById = useMemo(
+    () => new Map(slides.map((s) => [s.id, s.slide_num])),
+    [slides],
+  )
+  const eventLogs = useMemo(() => changeLogs.filter(isEventChangeLog), [changeLogs])
 
   const logDownload = async (detail: string) => {
     if (!user) return
@@ -228,20 +241,28 @@ export function DoneStep({ project }: DoneStepProps) {
         </div>
       )}
 
+      <TextChangeSummaryPanel
+        spellingResults={spellingResults}
+        expertItems={items}
+        changeLogs={changeLogs}
+        slideNumById={slideNumById}
+      />
+
       <div className="nb-card px-4 py-4">
         <h4 className="text-sm font-semibold text-gray-800">변경 이력</h4>
+        <p className="mt-1 text-xs text-gray-400">단계 완료·다운로드 등 이벤트 타임라인</p>
         {isLoading ? (
           <p className="mt-3 text-sm text-gray-500">변경 이력을 불러오는 중...</p>
-        ) : changeLogs.length === 0 ? (
+        ) : eventLogs.length === 0 ? (
           <p className="mt-3 text-sm text-gray-500">변경 이력이 없습니다.</p>
         ) : (
           <ul className="mt-3 divide-y divide-gray-100">
-            {changeLogs.map((log) => (
+            {eventLogs.map((log) => (
               <li key={log.id} className="py-2.5">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-                      {ACTION_LABELS[log.action] ?? log.action}
+                      {(log.action && ACTION_LABELS[log.action]) || log.action}
                     </span>
                     {log.detail && (
                       <p className="mt-1 text-sm text-gray-800">{log.detail}</p>

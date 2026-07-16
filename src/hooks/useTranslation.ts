@@ -9,6 +9,7 @@ import {
 import { type ChunkProgress, mergeChunkProgress } from '../lib/chunkProgress'
 import { supabase } from '../lib/supabase'
 import type { Translation } from '../types'
+import { useAuth } from './useAuth'
 
 const translationsQueryKey = ['translations'] as const
 const TRANSLATE_BATCH_SIZE = 3
@@ -94,19 +95,38 @@ export function useRunTranslation() {
 
 export function useUpdateTranslation() {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
 
   return useMutation({
     mutationFn: async ({
       id,
-      projectId: _projectId,
+      projectId,
       viText,
       targetLang: _targetLang,
+      stage,
+      slideId,
+      slideNum,
+      field,
     }: {
       id: string
       projectId: string
       viText: string
       targetLang: string
+      stage: 'translation' | 'verification'
+      slideId: string
+      slideNum: number
+      field: string
     }): Promise<Translation> => {
+      const { data: current, error: currentError } = await supabase
+        .from('translations')
+        .select('vi_text')
+        .eq('id', id)
+        .single()
+
+      if (currentError) throw currentError
+
+      const before = current?.vi_text ?? ''
+
       const { data, error } = await supabase
         .from('translations')
         .update({
@@ -118,10 +138,28 @@ export function useUpdateTranslation() {
         .single()
 
       if (error) throw error
+
+      if (before.trim() !== viText.trim()) {
+        const { error: logError } = await supabase.from('change_logs').insert({
+          project_id: projectId,
+          user_id: user?.id ?? null,
+          slide_id: slideId,
+          stage,
+          field,
+          before_value: before,
+          after_value: viText,
+          action: stage === 'verification' ? 'verification_edited' : 'translation_edited',
+          detail: `슬라이드 ${slideNum} ${field} 번역문 수정`,
+          metadata: { slide_num: slideNum, field, before, after: viText },
+        })
+        if (logError) throw logError
+      }
+
       return data
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [...translationsQueryKey, variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['change_logs', variables.projectId] })
     },
   })
 }

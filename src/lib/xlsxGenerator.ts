@@ -37,9 +37,13 @@ const CHANGE_LOG_ACTION_LABELS: Record<ChangeLogAction, string> = {
   pptx_uploaded: 'PPTX 업로드',
   extraction_done: '추출 완료',
   spelling_applied: '맞춤법 반영',
+  spelling_reverted: '맞춤법 되돌림',
   translation_done: '번역 완료',
+  translation_edited: '번역문 수정',
   verification_applied: '역번역 검증 반영',
+  verification_edited: '역번역 후 수정',
   expert_review_sent: '전문가 검증 요청',
+  expert_review_edited: '전문가 번역 수정',
   expert_review_done: '전문가 검증 완료',
   download: '다운로드',
 }
@@ -130,13 +134,30 @@ function buildChangeLogRows(changeLogs: ChangeLog[]): SheetRow[] {
     const item =
       typeof meta.field === 'string'
         ? fieldKeyLabel(meta.field)
-        : (log.detail ?? '')
-    const before = typeof meta.before === 'string' ? meta.before : ''
-    const after = typeof meta.after === 'string' ? meta.after : ''
+        : log.field
+          ? fieldKeyLabel(log.field)
+          : (log.detail ?? '')
+    const before =
+      typeof log.before_value === 'string'
+        ? log.before_value
+        : typeof meta.before === 'string'
+          ? meta.before
+          : ''
+    const after =
+      typeof log.after_value === 'string'
+        ? log.after_value
+        : typeof meta.after === 'string'
+          ? meta.after
+          : ''
     const editor = typeof meta.editor === 'string' ? meta.editor : (log.user_id ?? '')
+    const stageLabel =
+      (log.action && CHANGE_LOG_ACTION_LABELS[log.action]) ||
+      log.stage ||
+      log.action ||
+      ''
 
     rows.push([
-      CHANGE_LOG_ACTION_LABELS[log.action] ?? log.action,
+      stageLabel,
       slide,
       item,
       before,

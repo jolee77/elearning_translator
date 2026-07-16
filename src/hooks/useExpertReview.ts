@@ -92,7 +92,7 @@ export function useChangeLogs(projectId: string | undefined) {
         .select('*')
         .eq('project_id', projectId!)
         .order('changed_at', { ascending: false })
-        .limit(30)
+        .limit(200)
 
       if (error) throw error
       return data
