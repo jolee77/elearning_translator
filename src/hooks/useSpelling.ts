@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { spellingCheck } from '../lib/claudeApi'
 import { type ChunkProgress, mergeChunkProgress } from '../lib/chunkProgress'
 import { normalizeNarration } from '../lib/pptxParser'
-import { applyFieldCorrection } from '../lib/slideFields'
+import { applyFieldCorrection, fieldKeyLabel } from '../lib/slideFields'
 import {
   hasSpellingTextChanges,
   normalizeSpellingIssues,
@@ -171,6 +171,7 @@ async function commitSpellingResultToSlide(
   slide: Slide,
   projectId: string,
   userId: string | undefined,
+  editorName?: string | null,
 ): Promise<void> {
   const updates = applyFieldCorrection(slide, result.field, result.suggestion)
   if (Object.keys(updates).length === 0) {
@@ -192,6 +193,7 @@ async function commitSpellingResultToSlide(
   if (resultError) throw new Error(resultError.message)
 
   if (userId) {
+    const name = editorName?.trim() || null
     const { error: logError } = await supabase.from('change_logs').insert({
       project_id: projectId,
       user_id: userId,
@@ -200,8 +202,9 @@ async function commitSpellingResultToSlide(
       field: result.field,
       before_value: result.original,
       after_value: result.suggestion,
+      changed_by: name,
       action: 'spelling_applied',
-      detail: `슬라이드 ${slide.slide_num} ${result.field} 수정 적용`,
+      detail: `슬라이드 ${slide.slide_num} ${fieldKeyLabel(result.field)} 수정 적용`,
       metadata: {
         stage: 'spelling',
         spelling_result_id: result.id,
@@ -209,6 +212,7 @@ async function commitSpellingResultToSlide(
         field: result.field,
         before: result.original,
         after: result.suggestion,
+        editor: name,
       },
     })
 
@@ -221,6 +225,7 @@ async function revertSpellingResultFromSlide(
   slide: Slide,
   projectId: string,
   userId: string | undefined,
+  editorName?: string | null,
 ): Promise<void> {
   const updates = applyFieldCorrection(slide, result.field, result.original)
   if (Object.keys(updates).length === 0) {
@@ -242,12 +247,18 @@ async function revertSpellingResultFromSlide(
   if (resultError) throw new Error(resultError.message)
 
   if (userId) {
+    const name = editorName?.trim() || null
     const { error: logError } = await supabase.from('change_logs').insert({
       project_id: projectId,
       user_id: userId,
+      changed_by: name,
       action: 'spelling_reverted',
-      detail: `슬라이드 ${slide.slide_num} ${result.field} 맞춤법 적용 되돌림`,
-      metadata: { stage: 'spelling', spelling_result_id: result.id },
+      detail: `슬라이드 ${slide.slide_num} ${fieldKeyLabel(result.field)} 맞춤법 적용 되돌림`,
+      metadata: {
+        stage: 'spelling',
+        spelling_result_id: result.id,
+        editor: name,
+      },
     })
 
     if (logError) throw new Error(logError.message)
@@ -337,7 +348,7 @@ export function useResetSpellingReview() {
 
 /** 변경 선택 항목을 슬라이드에 일괄 반영 */
 export function useCommitSpellingToSlides() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -357,7 +368,13 @@ export function useCommitSpellingToSlides() {
         if (!result.applied || result.skipped || result.committed_to_slide) continue
         const slide = slideMap.get(result.slide_id)
         if (!slide) continue
-        await commitSpellingResultToSlide(result, slide, projectId, user?.id)
+        await commitSpellingResultToSlide(
+          result,
+          slide,
+          projectId,
+          user?.id,
+          profile?.name,
+        )
         committed += 1
       }
 
@@ -372,7 +389,7 @@ export function useCommitSpellingToSlides() {
 
 /** 슬라이드 반영을 되돌리고 검토 상태 초기화 */
 export function useRevertSpellingCommit() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -392,7 +409,13 @@ export function useRevertSpellingCommit() {
         if (!result.committed_to_slide) continue
         const slide = slideMap.get(result.slide_id)
         if (!slide) continue
-        await revertSpellingResultFromSlide(result, slide, projectId, user?.id)
+        await revertSpellingResultFromSlide(
+          result,
+          slide,
+          projectId,
+          user?.id,
+          profile?.name,
+        )
         reverted += 1
       }
 

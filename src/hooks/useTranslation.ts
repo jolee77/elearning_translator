@@ -95,7 +95,7 @@ export function useRunTranslation() {
 
 export function useUpdateTranslation() {
   const queryClient = useQueryClient()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
 
   return useMutation({
     mutationFn: async ({
@@ -140,6 +140,7 @@ export function useUpdateTranslation() {
       if (error) throw error
 
       if (before.trim() !== viText.trim()) {
+        const editorName = profile?.name?.trim() || null
         const { error: logError } = await supabase.from('change_logs').insert({
           project_id: projectId,
           user_id: user?.id ?? null,
@@ -148,9 +149,16 @@ export function useUpdateTranslation() {
           field,
           before_value: before,
           after_value: viText,
+          changed_by: editorName,
           action: stage === 'verification' ? 'verification_edited' : 'translation_edited',
           detail: `슬라이드 ${slideNum} ${field} 번역문 수정`,
-          metadata: { slide_num: slideNum, field, before, after: viText },
+          metadata: {
+            slide_num: slideNum,
+            field,
+            before,
+            after: viText,
+            editor: editorName,
+          },
         })
         if (logError) throw logError
       }

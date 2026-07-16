@@ -15,7 +15,7 @@ import { useTranslations } from '../../hooks/useTranslation'
 import { generateVnPptx } from '../../lib/pptxGenerator'
 import { isEventChangeLog } from '../../lib/textChangeSummary'
 import { supabase } from '../../lib/supabase'
-import { downloadBlob, generateTranslationXlsx } from '../../lib/xlsxGenerator'
+import { downloadBlob, generateTranslationXlsx, type XlsxActorContext } from '../../lib/xlsxGenerator'
 import { Spinner } from '../ui/Spinner'
 import { TextChangeSummaryPanel } from './TextChangeSummaryPanel'
 import type { ChangeLog, ChangeLogAction, Project } from '../../types'
@@ -55,16 +55,47 @@ async function fetchAllChangeLogs(projectId: string): Promise<ChangeLog[]> {
   return data
 }
 
+async function fetchXlsxActors(
+  changeLogs: ChangeLog[],
+  expertName?: string | null,
+): Promise<XlsxActorContext> {
+  const userIds = [
+    ...new Set(
+      changeLogs
+        .map((log) => log.user_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  ]
+
+  const profileNames: Record<string, string> = {}
+  if (userIds.length > 0) {
+    const { data, error } = await supabase.from('profiles').select('id, name').in('id', userIds)
+    if (error) throw error
+    for (const profile of data ?? []) {
+      if (profile.name?.trim()) {
+        profileNames[profile.id] = profile.name.trim()
+      }
+    }
+  }
+
+  return { profileNames, expertName: expertName?.trim() || null }
+}
+
 async function downloadSourcePptx(storagePath: string): Promise<File> {
   const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(storagePath)
-  if (error) throw error
+  if (error) {
+    throw new Error(`원본 PPTX를 불러오지 못했습니다: ${error.message}`)
+  }
+  if (!data) {
+    throw new Error('원본 PPTX 파일이 비어 있습니다.')
+  }
   return new File([await data.arrayBuffer()], 'source.pptx', {
     type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   })
 }
 
 export function DoneStep({ project }: DoneStepProps) {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { showToast } = useToast()
   const { data: reviews = [] } = useExpertReviews(project.id)
   const completedReview = reviews.find((r) => r.status === 'done') ?? reviews[0]
@@ -89,9 +120,16 @@ export function DoneStep({ project }: DoneStepProps) {
     await supabase.from('change_logs').insert({
       project_id: project.id,
       user_id: user.id,
+      changed_by: profile?.name?.trim() || null,
       action: 'download',
       detail,
     })
+  }
+
+  const buildXlsxBlob = async () => {
+    const allChangeLogs = await fetchAllChangeLogs(project.id)
+    const actors = await fetchXlsxActors(allChangeLogs, completedReview?.expert_name)
+    return generateTranslationXlsx(project, slides, translations, allChangeLogs, actors)
   }
 
   const handleDownloadPptx = async () => {
@@ -108,6 +146,9 @@ export function DoneStep({ project }: DoneStepProps) {
     try {
       const sourceFile = await downloadSourcePptx(project.source_pptx_url)
       const blob = await generateVnPptx(sourceFile, translations)
+      if (blob.size === 0) {
+        throw new Error('생성된 PPTX 파일이 비어 있습니다.')
+      }
       downloadBlob(blob, `${baseName}_VN.pptx`)
       await logDownload('VN 스토리보드 PPTX 다운로드')
       showToast('VN PPTX 다운로드가 완료되었습니다.', 'success')
@@ -126,8 +167,7 @@ export function DoneStep({ project }: DoneStepProps) {
 
     setDownloading('xlsx')
     try {
-      const allChangeLogs = await fetchAllChangeLogs(project.id)
-      const blob = generateTranslationXlsx(project, slides, translations, allChangeLogs)
+      const blob = await buildXlsxBlob()
       downloadBlob(blob, `${baseName}_번역결과.xlsx`)
       await logDownload('번역 결과 XLSX 다운로드')
       showToast('엑셀 다운로드가 완료되었습니다.', 'success')
@@ -150,15 +190,15 @@ export function DoneStep({ project }: DoneStepProps) {
 
     setDownloading('zip')
     try {
-      const [sourceFile, allChangeLogs] = await Promise.all([
+      const [sourceFile, xlsxBlob] = await Promise.all([
         downloadSourcePptx(project.source_pptx_url),
-        fetchAllChangeLogs(project.id),
+        buildXlsxBlob(),
       ])
 
-      const [pptxBlob, xlsxBlob] = await Promise.all([
-        generateVnPptx(sourceFile, translations),
-        Promise.resolve(generateTranslationXlsx(project, slides, translations, allChangeLogs)),
-      ])
+      const pptxBlob = await generateVnPptx(sourceFile, translations)
+      if (pptxBlob.size === 0) {
+        throw new Error('생성된 PPTX 파일이 비어 있습니다.')
+      }
 
       const zip = new JSZip()
       zip.file(`${baseName}_VN.pptx`, pptxBlob)
