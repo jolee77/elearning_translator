@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { AutoResizeTextarea } from '../ui/AutoResizeTextarea'
 import { ChunkProgressPanel } from '../ui/ChunkProgressPanel'
 import { Spinner } from '../ui/Spinner'
+import { useAiJob, useAiJobs } from '../../hooks/AiJobProvider'
 import { useToast } from '../../hooks/ToastProvider'
 import { useSlides } from '../../hooks/useSlides'
 import {
   getNarrationSpeedInfo,
   NARRATION_FIELD_KEY,
-  useRunTranslation,
   useTranslations,
   useUpdateTranslation,
 } from '../../hooks/useTranslation'
@@ -17,13 +17,11 @@ import {
   matchStatusLabel,
   needsVerificationReview,
   useFinalizeVerification,
-  useRunVerification,
   useVerifications,
 } from '../../hooks/useVerification'
 import { fieldKeyLabel } from '../../lib/slideFields'
 import { getLangConfig } from '../../lib/lang'
 import { isStepAccessible, stepPrerequisiteMessage } from '../../lib/projectStatus'
-import type { ChunkProgress } from '../../lib/chunkProgress'
 import type { Project, Translation } from '../../types'
 
 interface TranslationVerificationStepProps {
@@ -37,20 +35,26 @@ function formatSeconds(seconds: number): string {
 
 export function TranslationVerificationStep({ project, onStepComplete }: TranslationVerificationStepProps) {
   const { showToast } = useToast()
+  const { startTranslateJob, startVerifyJob } = useAiJobs()
+  const translateJob = useAiJob(project.id, 'translate')
+  const verifyJob = useAiJob(project.id, 'verify')
   const { data: slides = [] } = useSlides(project.id)
   const { data: translations = [], isLoading: translationsLoading } = useTranslations(project.id)
   const { data: verifications = [], isLoading: verificationsLoading } = useVerifications(project.id)
 
-  const runTranslation = useRunTranslation()
-  const runVerification = useRunVerification()
   const updateTranslation = useUpdateTranslation()
   const finalize = useFinalizeVerification()
 
-  const [chunkProgress, setChunkProgress] = useState<ChunkProgress | null>(null)
-  const [isTranslating, setIsTranslating] = useState(false)
-  const [isVerifying, setIsVerifying] = useState(false)
   const [localTexts, setLocalTexts] = useState<Record<string, string>>({})
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
+
+  const isTranslating = translateJob?.status === 'running'
+  const isVerifying = verifyJob?.status === 'running'
+  const chunkProgress = isTranslating
+    ? translateJob?.progress ?? null
+    : isVerifying
+      ? verifyJob?.progress ?? null
+      : null
 
   const accessible = isStepAccessible(3, project.status)
   const langName = getLangConfig(project.target_lang).name
@@ -99,31 +103,21 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
     return { passed, needsReview }
   }, [verifications])
 
-  const handleRunTranslation = async () => {
+  const handleRunTranslation = () => {
     if (!accessible) {
       showToast(stepPrerequisiteMessage(3), 'error')
       return
     }
-    setIsTranslating(true)
-    setChunkProgress(null)
-    try {
-      await runTranslation.mutateAsync({
-        projectId: project.id,
-        slideIds: eligibleSlides.map((s) => s.id),
-        targetLang: project.target_lang,
-        onChunkProgress: setChunkProgress,
-      })
-      setDirtyIds(new Set())
-      showToast('번역이 완료되었습니다. 역번역 검증을 실행해 주세요.', 'success')
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : '번역에 실패했습니다.', 'error')
-    } finally {
-      setIsTranslating(false)
-      setChunkProgress(null)
-    }
+    setDirtyIds(new Set())
+    startTranslateJob({
+      projectId: project.id,
+      projectTitle: project.title,
+      slideIds: eligibleSlides.map((s) => s.id),
+      targetLang: project.target_lang,
+    })
   }
 
-  const handleRunVerification = async () => {
+  const handleRunVerification = () => {
     if (!accessible) {
       showToast(stepPrerequisiteMessage(3), 'error')
       return
@@ -132,20 +126,10 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
       showToast('먼저 번역을 실행해 주세요.', 'error')
       return
     }
-    setIsVerifying(true)
-    setChunkProgress(null)
-    try {
-      await runVerification.mutateAsync({
-        projectId: project.id,
-        onChunkProgress: setChunkProgress,
-      })
-      showToast('역번역 검증이 완료되었습니다.', 'success')
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : '역번역 검증에 실패했습니다.', 'error')
-    } finally {
-      setIsVerifying(false)
-      setChunkProgress(null)
-    }
+    startVerifyJob({
+      projectId: project.id,
+      projectTitle: project.title,
+    })
   }
 
   const handleTextChange = (id: string, value: string) => {
@@ -215,8 +199,6 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
   const isBusy =
     isTranslating ||
     isVerifying ||
-    runTranslation.isPending ||
-    runVerification.isPending ||
     updateTranslation.isPending ||
     finalize.isPending
 
@@ -293,8 +275,8 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
           progress={chunkProgress}
           hint={
             isTranslating
-              ? `${eligibleSlides.length}개 슬라이드를 3개씩 나누어 번역합니다.`
-              : '화면텍스트·나레이션 번역을 4건씩 나누어 역번역·품질 검증합니다.'
+              ? `${eligibleSlides.length}개 슬라이드를 3개씩 나누어 번역합니다. 다른 페이지로 이동해도 백그라운드에서 계속됩니다.`
+              : '화면텍스트·나레이션 번역을 4건씩 나누어 역번역·품질 검증합니다. 다른 페이지로 이동해도 백그라운드에서 계속됩니다.'
           }
         />
       )}

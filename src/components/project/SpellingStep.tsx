@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChunkProgressPanel } from '../ui/ChunkProgressPanel'
 import { Spinner } from '../ui/Spinner'
 import { SuggestionHighlight } from '../ui/SuggestionHighlight'
+import { useAiJob, useAiJobs } from '../../hooks/AiJobProvider'
 import { useToast } from '../../hooks/ToastProvider'
 import {
   canCompleteSpellingReview,
@@ -19,11 +20,9 @@ import {
   useRejectSpellingFix,
   useResetSpellingReview,
   useRevertSpellingCommit,
-  useRunSpellingCheck,
   useSpellingResults,
 } from '../../hooks/useSpelling'
 import { useSlides } from '../../hooks/useSlides'
-import type { ChunkProgress } from '../../lib/chunkProgress'
 import { getErrorMessage } from '../../lib/errors'
 import { fieldKeyLabel } from '../../lib/slideFields'
 import {
@@ -56,9 +55,10 @@ const WORKFLOW_STEPS = [
 
 export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
   const { showToast } = useToast()
+  const { startSpellingJob } = useAiJobs()
+  const spellingJob = useAiJob(project.id, 'spelling')
   const { data: slides = [], isLoading: slidesLoading } = useSlides(project.id)
   const { data: results = [], isLoading: resultsLoading } = useSpellingResults(project.id)
-  const runSpelling = useRunSpellingCheck()
   const approveFix = useApproveSpellingFix()
   const rejectFix = useRejectSpellingFix()
   const resetReview = useResetSpellingReview()
@@ -66,10 +66,29 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
   const revertCommit = useRevertSpellingCommit()
   const completeReview = useCompleteSpellingReview()
 
-  const [chunkProgress, setChunkProgress] = useState<ChunkProgress | null>(null)
-  const [checkPhase, setCheckPhase] = useState<CheckPhase>('idle')
   const [lastSummary, setLastSummary] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [localError, setLocalError] = useState(false)
+
+  const isRunning = spellingJob?.status === 'running'
+  const chunkProgress = isRunning ? spellingJob.progress : null
+  const checkPhase: CheckPhase = isRunning
+    ? 'running'
+    : spellingJob?.status === 'error' || localError
+      ? 'error'
+      : spellingJob?.status === 'done' || results.length > 0 || project.status === 'spelling_done'
+        ? 'done'
+        : 'idle'
+
+  useEffect(() => {
+    if (spellingJob?.status === 'done' && spellingJob.successMessage) {
+      setLastSummary(spellingJob.successMessage)
+      setLocalError(false)
+    }
+    if (spellingJob?.status === 'error') {
+      setLocalError(true)
+    }
+  }, [spellingJob?.status, spellingJob?.successMessage])
 
   const accessible = isStepAccessible(2, project.status)
   const eligibleSlides = useMemo(
@@ -175,8 +194,6 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
   const canCompleteReview =
     checkCompleted && fullyCommitted && checkPhase !== 'running'
 
-  const isRunning = checkPhase === 'running'
-
   const activeWorkflowStep = useMemo(() => {
     if (!checkCompleted) return 0
     if (!reviewSettled) return 1
@@ -211,36 +228,21 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
     setSelectedIds(new Set(pendingReview.map((r) => r.id)))
   }
 
-  const handleRunSpelling = async () => {
+  const handleRunSpelling = () => {
     if (!accessible) {
       showToast(stepPrerequisiteMessage(2), 'error')
       return
     }
 
-    setCheckPhase('running')
-    setChunkProgress(null)
     setLastSummary(null)
+    setLocalError(false)
     setSelectedIds(new Set())
-    try {
-      const summary = await runSpelling.mutateAsync({
-        projectId: project.id,
-        slideIds: eligibleSlides.map((s) => s.id),
-        onChunkProgress: setChunkProgress,
-      })
-
-      setCheckPhase('done')
-      const message =
-        summary.changeCount > 0
-          ? `검사 완료: 텍스트 있음 ${spellableSlideCount}개 슬라이드 전체 검사, 검토 필요 ${summary.changeCount}건`
-          : `검사 완료: 텍스트 있음 ${spellableSlideCount}개 슬라이드 전체 검사, 수정이 필요한 항목이 없습니다.`
-      setLastSummary(message)
-      showToast(message, 'success')
-    } catch (err) {
-      setCheckPhase('error')
-      showToast(getErrorMessage(err, '맞춤법 검사에 실패했습니다.'), 'error')
-    } finally {
-      setChunkProgress(null)
-    }
+    startSpellingJob({
+      projectId: project.id,
+      projectTitle: project.title,
+      slideIds: eligibleSlides.map((s) => s.id),
+      spellableSlideCount,
+    })
   }
 
   const handleBulkApprove = async () => {
@@ -377,7 +379,6 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
 
   const isBusy =
     isRunning ||
-    runSpelling.isPending ||
     approveFix.isPending ||
     rejectFix.isPending ||
     resetReview.isPending ||
@@ -749,7 +750,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
         <ChunkProgressPanel
           title="맞춤법 검사"
           progress={chunkProgress}
-          hint="추출된 화면텍스트·나레이션을 검사합니다. 슬라이드 원본은 변경되지 않습니다."
+          hint="추출된 화면텍스트·나레이션을 검사합니다. 다른 페이지로 이동해도 백그라운드에서 계속됩니다."
         />
       )}
 

@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AiJobProvider } from './hooks/AiJobProvider'
 import { AuthProvider } from './hooks/AuthProvider'
 import { ToastProvider } from './hooks/ToastProvider'
 import './index.css'
@@ -15,7 +16,9 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <AuthProvider>
           <ToastProvider>
-            <App />
+            <AiJobProvider>
+              <App />
+            </AiJobProvider>
           </ToastProvider>
         </AuthProvider>
       </BrowserRouter>

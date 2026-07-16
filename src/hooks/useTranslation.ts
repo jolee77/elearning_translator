@@ -1,18 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { translateSlides } from '../lib/claudeApi'
+import { runTranslateJob } from '../lib/aiJobs'
 import {
   estimateKoDurationSeconds,
   estimateTargetDurationSeconds,
   getLangConfig,
   NARRATION_FIELD_KEY,
 } from '../lib/lang'
-import { type ChunkProgress, mergeChunkProgress } from '../lib/chunkProgress'
+import { type ChunkProgress } from '../lib/chunkProgress'
 import { supabase } from '../lib/supabase'
 import type { Translation } from '../types'
 import { useAuth } from './useAuth'
 
 const translationsQueryKey = ['translations'] as const
-const TRANSLATE_BATCH_SIZE = 3
 
 function countWords(text: string): number {
   const trimmed = text.trim()
@@ -41,6 +40,7 @@ export function useTranslations(projectId: string | undefined) {
   })
 }
 
+/** @deprecated Step에서는 AiJobProvider.startTranslateJob 사용. 테스트·호환용 유지 */
 export function useRunTranslation() {
   const queryClient = useQueryClient()
 
@@ -57,39 +57,14 @@ export function useRunTranslation() {
       targetLang: string
       onProgress?: (percent: number) => void
       onChunkProgress?: (progress: ChunkProgress) => void
-    }): Promise<void> => {
-      if (slideIds.length === 0) {
-        throw new Error('번역할 슬라이드가 없습니다.')
-      }
-
-      await supabase.from('projects').update({ status: 'translating' }).eq('id', projectId)
-
-      const batches: string[][] = []
-      for (let i = 0; i < slideIds.length; i += TRANSLATE_BATCH_SIZE) {
-        batches.push(slideIds.slice(i, i + TRANSLATE_BATCH_SIZE))
-      }
-
-      onChunkProgress?.(mergeChunkProgress(0, batches.length, '번역 준비'))
-
-      for (let i = 0; i < batches.length; i++) {
-        onChunkProgress?.(mergeChunkProgress(i + 1, batches.length, '슬라이드 묶음 AI 번역'))
-
-        await translateSlides(projectId, batches[i], targetLang, {
-          resetResults: i === 0,
-          finalize: i === batches.length - 1,
-        })
-
-        const percent = Math.round(((i + 1) / batches.length) * 100)
-        onProgress?.(percent)
-      }
-
-      onChunkProgress?.(mergeChunkProgress(batches.length, batches.length, '번역 완료'))
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
-      queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] })
-      queryClient.invalidateQueries({ queryKey: [...translationsQueryKey, variables.projectId] })
-    },
+    }): Promise<void> =>
+      runTranslateJob(queryClient, {
+        projectId,
+        slideIds,
+        targetLang,
+        onProgress,
+        onChunkProgress,
+      }),
   })
 }
 

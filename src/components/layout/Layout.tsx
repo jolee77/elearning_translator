@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { AiJobBanner } from './AiJobBanner'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `nb-sidebar-link${isActive ? ' nb-sidebar-link--active' : ''}`
@@ -109,6 +110,8 @@ export function Layout() {
             </button>
           </div>
         </header>
+
+        <AiJobBanner />
 
         <main className="nb-content nb-app-content">
           <Outlet />

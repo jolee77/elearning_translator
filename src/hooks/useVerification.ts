@@ -1,12 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { verifyTranslations } from '../lib/claudeApi'
-import { type ChunkProgress, mergeChunkProgress } from '../lib/chunkProgress'
+import { runVerifyJob } from '../lib/aiJobs'
+import { type ChunkProgress } from '../lib/chunkProgress'
 import { supabase } from '../lib/supabase'
 import type { Translation, Verification, VerificationApplyStatus } from '../types'
 import { useAuth } from './useAuth'
 
 const verificationsQueryKey = ['verifications'] as const
-const VERIFY_BATCH_SIZE = 4
 
 export type MatchStatus = 'ok' | 'warn' | 'fail'
 
@@ -27,6 +26,7 @@ export function useVerifications(projectId: string | undefined) {
   })
 }
 
+/** @deprecated Step에서는 AiJobProvider.startVerifyJob 사용. 테스트·호환용 유지 */
 export function useRunVerification() {
   const queryClient = useQueryClient()
 
@@ -39,53 +39,8 @@ export function useRunVerification() {
       projectId: string
       onProgress?: (percent: number) => void
       onChunkProgress?: (progress: ChunkProgress) => void
-    }): Promise<void> => {
-      const { data: translations, error } = await supabase
-        .from('translations')
-        .select('id')
-        .eq('project_id', projectId)
-        .not('vi_text', 'is', null)
-        .neq('vi_text', '')
-
-      if (error) throw error
-
-      const translationIds = (translations ?? []).map((row) => row.id)
-      if (translationIds.length === 0) {
-        throw new Error('검증할 번역이 없습니다.')
-      }
-
-      await supabase.from('projects').update({ status: 'verifying' }).eq('id', projectId)
-
-      const batches: string[][] = []
-      for (let i = 0; i < translationIds.length; i += VERIFY_BATCH_SIZE) {
-        batches.push(translationIds.slice(i, i + VERIFY_BATCH_SIZE))
-      }
-
-      onChunkProgress?.(mergeChunkProgress(0, batches.length, '역번역 검증 준비'))
-      onProgress?.(2)
-
-      for (let i = 0; i < batches.length; i++) {
-        onChunkProgress?.(
-          mergeChunkProgress(i + 1, batches.length, '번역 항목 묶음 AI 역번역'),
-        )
-
-        await verifyTranslations(projectId, {
-          translationIds: batches[i],
-          resetResults: i === 0,
-          finalize: i === batches.length - 1,
-        })
-
-        const percent = Math.max(5, Math.round(((i + 1) / batches.length) * 100))
-        onProgress?.(percent)
-      }
-
-      onChunkProgress?.(mergeChunkProgress(batches.length, batches.length, '역번역 검증 완료'))
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
-      queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] })
-      queryClient.invalidateQueries({ queryKey: [...verificationsQueryKey, variables.projectId] })
-    },
+    }): Promise<void> =>
+      runVerifyJob(queryClient, { projectId, onProgress, onChunkProgress }),
   })
 }
 

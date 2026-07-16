@@ -184,6 +184,11 @@ Supabase Edge Function에서 처리 (API 키 서버사이드 보관)
 
 각 함수에서 settings 테이블의 claude_api_key 조회 후 사용.
 
+### 백그라운드 실행 (앱 내 이동)
+맞춤법·번역·역번역은 `AiJobProvider`가 클라이언트에서 배치 루프를 소유한다.
+대시보드·다른 Step·다른 프로젝트로 이동해도 작업이 이어지며, Layout 상단 배너와 완료/실패 토스트로 알린다.
+브라우저 새로고침·탭 닫기 시에는 중단된다 (서버 작업 큐 없음).
+
 ## 언어별 발화속도 (CPM)
 ```typescript
 const LANG_CONFIG = {

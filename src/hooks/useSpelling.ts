@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { spellingCheck } from '../lib/claudeApi'
-import { type ChunkProgress, mergeChunkProgress } from '../lib/chunkProgress'
+import {
+  runSpellingJob,
+  type SpellingCheckSummary,
+} from '../lib/aiJobs'
+import { type ChunkProgress } from '../lib/chunkProgress'
 import { normalizeNarration } from '../lib/pptxParser'
 import { applyFieldCorrection, fieldKeyLabel } from '../lib/slideFields'
 import {
@@ -10,6 +13,8 @@ import {
 import { supabase } from '../lib/supabase'
 import type { Slide, SpellingResult } from '../types'
 import { useAuth } from './useAuth'
+
+export type { SpellingCheckSummary }
 
 /** useSlides와 동일 — DB text 컬럼용 JSON 직렬화 */
 function prepareSlideFieldUpdatesForDb(
@@ -29,8 +34,6 @@ function prepareSlideFieldUpdatesForDb(
 }
 
 const spellingQueryKey = ['spelling_results'] as const
-/** Edge Function spelling-check BATCH_SIZE와 동일 */
-const SPELLING_BATCH_SIZE = 10
 
 function normalizeSpellingResult(row: SpellingResult & { issues?: unknown }): SpellingResult {
   return {
@@ -39,12 +42,6 @@ function normalizeSpellingResult(row: SpellingResult & { issues?: unknown }): Sp
     committed_to_slide: row.committed_to_slide ?? false,
     issues: normalizeSpellingIssues(row.issues),
   }
-}
-
-export interface SpellingCheckSummary {
-  resultCount: number
-  changeCount: number
-  processedSlides: number
 }
 
 export function useSpellingResults(projectId: string | undefined) {
@@ -64,6 +61,7 @@ export function useSpellingResults(projectId: string | undefined) {
   })
 }
 
+/** @deprecated Step에서는 AiJobProvider.startSpellingJob 사용. 테스트·호환용 유지 */
 export function useRunSpellingCheck() {
   const queryClient = useQueryClient()
 
@@ -78,91 +76,8 @@ export function useRunSpellingCheck() {
       slideIds: string[]
       onProgress?: (percent: number) => void
       onChunkProgress?: (progress: ChunkProgress) => void
-    }): Promise<SpellingCheckSummary> => {
-      if (slideIds.length === 0) {
-        throw new Error('검사할 슬라이드가 없습니다.')
-      }
-
-      const { error: statusError } = await supabase
-        .from('projects')
-        .update({ status: 'spelling' })
-        .eq('id', projectId)
-
-      if (statusError) throw statusError
-
-      const batches: string[][] = []
-      for (let i = 0; i < slideIds.length; i += SPELLING_BATCH_SIZE) {
-        batches.push(slideIds.slice(i, i + SPELLING_BATCH_SIZE))
-      }
-
-      let totalResults = 0
-      let processedSlides = 0
-
-      onChunkProgress?.(mergeChunkProgress(0, batches.length, '맞춤법 검사 준비'))
-      onProgress?.(0)
-
-      for (let i = 0; i < batches.length; i++) {
-        const from = i * SPELLING_BATCH_SIZE + 1
-        const to = Math.min((i + 1) * SPELLING_BATCH_SIZE, slideIds.length)
-
-        onChunkProgress?.(
-          mergeChunkProgress(i, batches.length, `${from}~${to}번 슬라이드 AI 검사 중`),
-        )
-
-        const result = await spellingCheck(projectId, batches[i], {
-          resetResults: i === 0,
-          finalize: i === batches.length - 1,
-        })
-
-        totalResults += result.result_count
-        processedSlides += result.processed_slides
-
-        const percent = Math.round(((i + 1) / batches.length) * 100)
-        onChunkProgress?.(mergeChunkProgress(i + 1, batches.length, 'AI 검사'))
-        onProgress?.(percent)
-      }
-
-      if (totalResults === 0) {
-        throw new Error(
-          '맞춤법 검사 결과가 저장되지 않았습니다. 추출된 화면 텍스트·나레이션이 있는지 확인해 주세요.',
-        )
-      }
-
-      await queryClient.invalidateQueries({
-        queryKey: [...spellingQueryKey, projectId],
-      })
-      await queryClient.invalidateQueries({ queryKey: ['projects'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
-
-      const results = await queryClient.fetchQuery({
-        queryKey: [...spellingQueryKey, projectId],
-        queryFn: async (): Promise<SpellingResult[]> => {
-          const { data, error } = await supabase
-            .from('spelling_results')
-            .select('*')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: true })
-
-          if (error) throw error
-          return (data ?? []).map((row) => normalizeSpellingResult(row as SpellingResult))
-        },
-      })
-      const changeCount = results.filter(hasSpellingTextChanges).length
-
-      onChunkProgress?.(mergeChunkProgress(batches.length, batches.length, '맞춤법 검사 완료'))
-      onProgress?.(100)
-
-      return {
-        resultCount: totalResults,
-        changeCount,
-        processedSlides,
-      }
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
-      queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] })
-      queryClient.invalidateQueries({ queryKey: [...spellingQueryKey, variables.projectId] })
-    },
+    }): Promise<SpellingCheckSummary> =>
+      runSpellingJob(queryClient, { projectId, slideIds, onProgress, onChunkProgress }),
   })
 }
 
