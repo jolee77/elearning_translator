@@ -61,7 +61,7 @@ export function DoneStep({ project }: DoneStepProps) {
   const { showToast } = useToast()
   const { data: reviews = [] } = useExpertReviews(project.id)
   const completedReview = reviews.find((r) => r.status === 'done') ?? reviews[0]
-  const { data: items = [] } = useExpertReviewItems(completedReview?.id)
+  const { data: items = [] } = useExpertReviewItems(completedReview?.id, project.id)
   const { data: changeLogs = [], isLoading } = useChangeLogs(project.id)
   const { data: slides = [] } = useSlides(project.id)
   const { data: translations = [] } = useTranslations(project.id)

@@ -198,6 +198,7 @@ const KO_CPM = 320
 - 전문가는 로그인 없이 해당 URL로 접속
 - 상세 패널 필드 순서: 한국어 원문 → 번역문(수정 가능) → 역번역
 - 항목 「완료 → 다음」저장 시 다음 미검토 항목으로 자동 이동 (목록 스크롤 연동)
+- 설계자 Step5 수정 건수: `useExpertReviewItems(reviewId, projectId)`로 translations 조인 필수 (`vi_text` vs `original_vi_text`)
 - get_expert_review_by_token(token) RPC로 데이터 조회
 - save_expert_review_item(token, ...) RPC로 저장 (RLS 우회)
 - 전문가가 모든 항목 완료 시 expert_reviews.status = 'done'
