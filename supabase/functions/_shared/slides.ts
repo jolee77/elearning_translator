@@ -16,6 +16,7 @@ export interface SlideRow {
   screen_num: string | null
   screen_text: SlideTextBox[] | string | null
   narration: SlideTextBox[] | string | null
+  exclude_from_translation?: boolean | null
 }
 
 export function normalizeNarration(

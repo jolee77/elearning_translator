@@ -21,6 +21,7 @@ const STATUS_OPTIONS: { value: ProjectStatus | 'all'; label: string }[] = [
   { value: 'extracted', label: '추출 완료' },
   { value: 'spelling', label: '맞춤법 검사 중' },
   { value: 'spelling_done', label: '맞춤법 완료' },
+  { value: 'selection_done', label: '대상 선택 완료' },
   { value: 'translating', label: '번역 중' },
   { value: 'translated', label: '번역 완료' },
   { value: 'verifying', label: '역번역 검증 중' },

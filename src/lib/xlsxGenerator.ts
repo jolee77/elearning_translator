@@ -43,6 +43,7 @@ const CHANGE_LOG_ACTION_LABELS: Record<ChangeLogAction, string> = {
   extraction_done: '추출 완료',
   spelling_applied: '맞춤법 반영',
   spelling_reverted: '맞춤법 되돌림',
+  slide_selection_done: '번역 대상 선택',
   translation_done: '번역 완료',
   translation_edited: '번역문 수정',
   verification_applied: '역번역 검증 반영',
@@ -84,7 +85,7 @@ function buildTranslationRows(
     ? [['구분', '유형', '한글', targetLangName]]
     : [['구분', '유형', '한글']]
 
-  const contentSlides = slides.filter((s) => s.slide_type !== 'guide')
+  const contentSlides = slides.filter((s) => s.slide_type !== 'guide' && !s.exclude_from_translation)
   const referenceSlide = contentSlides[0] ?? slides[0]
 
   const courseKo = referenceSlide?.course_name ?? ''

@@ -42,7 +42,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
   const [memo, setMemo] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const accessible = isStepAccessible(4, project.status)
+  const accessible = isStepAccessible(5, project.status)
   const hasReview = displayedReview != null
   const isReviewDone = displayedReview?.status === 'done'
   const reviewUrl = displayedReview ? getReviewUrl(displayedReview.token) : ''
@@ -63,7 +63,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
 
   const handleCreateLink = async () => {
     if (!accessible) {
-      showToast(stepPrerequisiteMessage(4), 'error')
+      showToast(stepPrerequisiteMessage(5), 'error')
       return
     }
     if (!reviewerName.trim()) {
@@ -140,7 +140,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
       </div>
 
       {!accessible && (
-        <div className="nb-alert nb-alert--warning">{stepPrerequisiteMessage(4)}</div>
+        <div className="nb-alert nb-alert--warning">{stepPrerequisiteMessage(5)}</div>
       )}
 
       {isLoading ? (

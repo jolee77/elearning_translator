@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ExtractionStep } from '../components/project/ExtractionStep'
 import { SpellingStep } from '../components/project/SpellingStep'
+import { SlideExclusionStep } from '../components/project/SlideExclusionStep'
 import { StatusBadge } from '../components/project/StatusBadge'
 import { StepNav } from '../components/project/StepNav'
 import { TranslationVerificationStep } from '../components/project/TranslationVerificationStep'
@@ -26,6 +27,8 @@ export function ProjectDetailPage() {
       const next = statusToStep(project.status)
       // 맞춤법 검토 중(spelling)에는 자동으로 다음 단계로 넘기지 않음
       if (project.status === 'spelling' && prev === 2) return prev
+      // 번역 대상 선택 중(spelling_done)에도 Step 3에 머무름
+      if (project.status === 'spelling_done' && prev === 3) return prev
       return next
     })
   }, [project?.status, project?.id])
@@ -104,18 +107,24 @@ export function ProjectDetailPage() {
       )}
 
       {viewStep === 3 && (
-        <div className="nb-card nb-input-surface p-4 sm:p-6">
-          <TranslationVerificationStep project={project} onStepComplete={() => setViewStep(4)} />
+        <div className="nb-card p-4 sm:p-6">
+          <SlideExclusionStep project={project} onStepComplete={() => setViewStep(4)} />
         </div>
       )}
 
       {viewStep === 4 && (
+        <div className="nb-card nb-input-surface p-4 sm:p-6">
+          <TranslationVerificationStep project={project} onStepComplete={() => setViewStep(5)} />
+        </div>
+      )}
+
+      {viewStep === 5 && (
         <div className="nb-card p-4 sm:p-6">
           <ExpertReviewStep project={project} />
         </div>
       )}
 
-      {viewStep === 5 && (
+      {viewStep === 6 && (
         <div className="nb-card p-4 sm:p-6">
           <DoneStep project={project} />
         </div>

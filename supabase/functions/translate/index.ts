@@ -191,7 +191,9 @@ serve(async (req) => {
 
     const { data: slides, error: slidesError } = await serviceClient
       .from('slides')
-      .select('id, project_id, slide_num, slide_type, screen_num, screen_text, narration')
+      .select(
+        'id, project_id, slide_num, slide_type, screen_num, screen_text, narration, exclude_from_translation',
+      )
       .eq('project_id', body.project_id)
       .in('id', body.slide_ids)
       .order('slide_num', { ascending: true })
@@ -204,7 +206,14 @@ serve(async (req) => {
       throw new HttpError(404, '처리할 슬라이드가 없습니다.')
     }
 
-    const slideRows = slides as SlideRow[]
+    const slideRows = (slides as SlideRow[]).filter(
+      (slide) => slide.slide_type !== 'guide' && !slide.exclude_from_translation,
+    )
+
+    if (slideRows.length === 0) {
+      throw new HttpError(400, '번역할 슬라이드가 없습니다. 번역 대상 선택을 확인해 주세요.')
+    }
+
     const rowsToInsert: TranslationInsertRow[] = []
     const expectedFieldCount = slideRows.reduce(
       (sum, slide) => sum + buildTranslationFieldKeys(slide).length,

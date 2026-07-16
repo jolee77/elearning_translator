@@ -30,6 +30,7 @@ const ACTION_LABELS: Record<ChangeLogAction, string> = {
   extraction_done: '추출 완료',
   spelling_applied: '맞춤법 반영',
   spelling_reverted: '맞춤법 되돌림',
+  slide_selection_done: '번역 대상 선택',
   translation_done: '번역 완료',
   translation_edited: '번역문 수정',
   verification_applied: '역번역 검증 반영',

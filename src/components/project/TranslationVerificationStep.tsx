@@ -56,10 +56,10 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
       ? verifyJob?.progress ?? null
       : null
 
-  const accessible = isStepAccessible(3, project.status)
+  const accessible = isStepAccessible(4, project.status)
   const langName = getLangConfig(project.target_lang).name
   const eligibleSlides = useMemo(
-    () => slides.filter((s) => s.slide_type !== 'guide'),
+    () => slides.filter((s) => s.slide_type !== 'guide' && !s.exclude_from_translation),
     [slides],
   )
 
@@ -105,7 +105,11 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
 
   const handleRunTranslation = () => {
     if (!accessible) {
-      showToast(stepPrerequisiteMessage(3), 'error')
+      showToast(stepPrerequisiteMessage(4), 'error')
+      return
+    }
+    if (eligibleSlides.length === 0) {
+      showToast('번역할 슬라이드가 없습니다. 이전 단계에서 대상을 확인해 주세요.', 'error')
       return
     }
     setDirtyIds(new Set())
@@ -119,7 +123,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
 
   const handleRunVerification = () => {
     if (!accessible) {
-      showToast(stepPrerequisiteMessage(3), 'error')
+      showToast(stepPrerequisiteMessage(4), 'error')
       return
     }
     if (translations.length === 0) {
@@ -223,7 +227,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
             className="nb-btn-secondary"
           >
             {isTranslating && <Spinner />}
-            {isTranslating ? '번역 중...' : '번역 실행'}
+            {isTranslating ? '번역 중...' : `번역 실행 (${eligibleSlides.length})`}
           </button>
           <button
             type="button"
@@ -252,7 +256,7 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
       </div>
 
       {!accessible && (
-        <div className="nb-alert nb-alert--warning">{stepPrerequisiteMessage(3)}</div>
+        <div className="nb-alert nb-alert--warning">{stepPrerequisiteMessage(4)}</div>
       )}
 
       {verifications.length > 0 && (

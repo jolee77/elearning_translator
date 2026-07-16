@@ -7,6 +7,7 @@ export type ProjectStatus =
   | 'extracted'
   | 'spelling'
   | 'spelling_done'
+  | 'selection_done'
   | 'translating'
   | 'translated'
   | 'verifying'
@@ -36,6 +37,7 @@ export type ChangeLogAction =
   | 'extraction_done'
   | 'spelling_applied'
   | 'spelling_reverted'
+  | 'slide_selection_done'
   | 'translation_done'
   | 'translation_edited'
   | 'verification_applied'
@@ -107,6 +109,8 @@ export interface Slide {
   screen_desc: string | null
   image_nums: string | null
   narration: SlideTextBox[] | string | null
+  /** true이면 번역·역번역·산출물에서 제외 */
+  exclude_from_translation: boolean
   created_at: string
 }
 

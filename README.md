@@ -63,6 +63,16 @@ npm run build
 
 프로젝트 상세 스펙은 [CLAUDE.md](./CLAUDE.md)를 참고하세요.
 
+## 최근 수정 (2026-07-16)
+
+### 번역 대상 선택 (Step 3)
+- 맞춤법 완료 후·번역 전에 추출 내용(화면텍스트·나레이션)을 확인하고 제외 슬라이드 선택
+- DB: `slides.exclude_from_translation`, 프로젝트 상태 `selection_done`
+- UI 6단계: 추출 → 맞춤법 → **대상 선택** → 번역·역번역 → 전문가 → 완료
+- 번역·엑셀 산출물에서 제외 슬라이드 필터 (`isTranslateEligibleSlide`)
+
+DB 마이그레이션: `supabase/migrations/20260716140000_slides_exclude_from_translation.sql`
+
 ## 최근 수정 (2026-07-10)
 
 ### PPTX 파서 v2 이식
@@ -81,7 +91,7 @@ npm run build
 1. AI 검사 — 추출 텍스트만 검사, 슬라이드는 변경하지 않음
 2. **변경** / **제외** — `spelling_results.applied` / `skipped`만 갱신
 3. **슬라이드에 일괄 적용** / **적용 되돌리기** — `committed_to_slide`로 반영·복원 (`original` 기준)
-4. **검토 완료 → 번역** — 변경 항목이 모두 슬라이드에 반영된 뒤 진행
+4. **검토 완료 → 대상 선택** — 변경 항목이 모두 슬라이드에 반영된 뒤 Step 3으로 진행
 
 DB 마이그레이션: `supabase/migrations/20250710100000_spelling_committed.sql` (`committed_to_slide` 컬럼)
 

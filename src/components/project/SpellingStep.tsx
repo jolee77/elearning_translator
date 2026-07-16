@@ -50,7 +50,7 @@ const WORKFLOW_STEPS = [
   '추출 텍스트 AI 검사',
   '수정안 검토 (변경·제외)',
   '슬라이드에 일괄 적용',
-  '검토 완료 → 번역',
+  '검토 완료 → 대상 선택',
 ] as const
 
 export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
@@ -822,7 +822,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
             }
           >
             {completeReview.isPending && <Spinner className="text-white" />}
-            {completeReview.isPending ? '처리 중...' : '검토 완료 → 번역'}
+            {completeReview.isPending ? '처리 중...' : '검토 완료 → 대상 선택'}
           </button>
         </div>
       </div>
@@ -883,7 +883,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
 
       {checkCompleted && fullyCommitted && results.length > 0 && !hasMissingResults && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          검토와 슬라이드 반영이 완료되었습니다. 「검토 완료 → 번역」으로 다음 단계로 진행하세요.
+          검토와 슬라이드 반영이 완료되었습니다. 「검토 완료 → 대상 선택」으로 다음 단계로 진행하세요.
         </div>
       )}
 

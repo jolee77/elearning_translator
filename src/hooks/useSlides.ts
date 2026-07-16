@@ -26,6 +26,7 @@ function normalizeSlide(slide: Slide): Slide {
     ...slide,
     screen_text: normalizeScreenText(slide.screen_text),
     narration: normalizeNarration(slide.narration),
+    exclude_from_translation: slide.exclude_from_translation === true,
   }
 }
 
@@ -80,6 +81,7 @@ function toSlideRows(projectId: string, parsed: ParsedSlide[]): SlideInsert[] {
     screen_desc: slide.screen_desc,
     image_nums: slide.image_nums,
     narration: serializeNarrationForDb(slide.narration) as unknown as SlideInsert['narration'],
+    exclude_from_translation: false,
   }))
 }
 
@@ -127,7 +129,7 @@ export function useExtractSlides() {
       const rows = toSlideRows(projectId, parsed)
 
       // slides 삭제 시 translations / verifications / spelling_results / expert_review_items CASCADE
-      // expert_reviews(링크)는 이력으로 유지 — Step4에서 완료 링크를 계속 볼 수 있게 함
+      // expert_reviews(링크)는 이력으로 유지 — Step5에서 완료 링크를 계속 볼 수 있게 함
       const { error: deleteError } = await supabase
         .from('slides')
         .delete()
@@ -135,7 +137,7 @@ export function useExtractSlides() {
 
       if (deleteError) throw deleteError
 
-      // 하위 데이터 삭제 후 상태를 추출 전으로 되돌려 빈 Step3가 done으로 남는 것을 방지
+      // 하위 데이터 삭제 후 상태를 추출 전으로 되돌려 빈 Step4가 done으로 남는 것을 방지
       const { error: statusError } = await supabase
         .from('projects')
         .update({ status: 'uploaded' })
@@ -339,6 +341,87 @@ export function useCompleteExtraction() {
           user_id: user.id,
           action: 'extraction_done',
           detail: `${slides.length}개 슬라이드 추출 완료`,
+        })
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: [...slidesQueryKey, variables.projectId] })
+    },
+  })
+}
+
+/** 번역에 포함할 슬라이드인지 (가이드·사용자 제외 제외) */
+export function isTranslateEligibleSlide(slide: Pick<Slide, 'slide_type' | 'exclude_from_translation'>): boolean {
+  return slide.slide_type !== 'guide' && !slide.exclude_from_translation
+}
+
+export function useSaveSlideExclusions() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      projectId: _projectId,
+      exclusions,
+    }: {
+      projectId: string
+      exclusions: { id: string; exclude_from_translation: boolean }[]
+    }): Promise<void> => {
+      for (const row of exclusions) {
+        const { error } = await supabase
+          .from('slides')
+          .update({ exclude_from_translation: row.exclude_from_translation })
+          .eq('id', row.id)
+
+        if (error) throw error
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...slidesQueryKey, variables.projectId] })
+    },
+  })
+}
+
+export function useCompleteSlideSelection() {
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      exclusions,
+      includedCount,
+      excludedCount,
+    }: {
+      projectId: string
+      exclusions: { id: string; exclude_from_translation: boolean }[]
+      includedCount: number
+      excludedCount: number
+    }): Promise<void> => {
+      for (const row of exclusions) {
+        const { error } = await supabase
+          .from('slides')
+          .update({ exclude_from_translation: row.exclude_from_translation })
+          .eq('id', row.id)
+
+        if (error) throw error
+      }
+
+      const { error: statusError } = await supabase
+        .from('projects')
+        .update({ status: 'selection_done' })
+        .eq('id', projectId)
+
+      if (statusError) throw statusError
+
+      if (user) {
+        await supabase.from('change_logs').insert({
+          project_id: projectId,
+          user_id: user.id,
+          action: 'slide_selection_done',
+          detail: `번역 대상 선택 완료 (포함 ${includedCount}·제외 ${excludedCount})`,
+          metadata: { included: includedCount, excluded: excludedCount },
         })
       }
     },
