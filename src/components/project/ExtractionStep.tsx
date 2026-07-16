@@ -52,10 +52,9 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
   const [replacementFile, setReplacementFile] = useState<File | null>(null)
 
   useEffect(() => {
+    // DB에 이미 추출분이 있으면 그대로 표시 (완료 프로젝트 재진입 포함)
     if (slides.length > 0) {
-      startTransition(() => {
-        setLocalSlides(slides)
-      })
+      setLocalSlides(slides)
     }
   }, [slides])
 
@@ -72,9 +71,7 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
         storagePath: project.source_pptx_url,
         onProgress: setExtractProgress,
       })
-      startTransition(() => {
-        setLocalSlides(result)
-      })
+      setLocalSlides(result)
       showToast('PPTX 추출이 완료되었습니다.', 'success')
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'PPTX 추출에 실패했습니다.', 'error')
@@ -191,13 +188,16 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
   const isExtracted = project.status !== 'uploaded'
 
   useEffect(() => {
+    // 최초 업로드 직후(슬라이드 없음)에만 자동 추출.
+    // 이미 DB에 추출분이 있으면 재추출하지 않음 — 완료 프로젝트 재진입 시 데이터 유실 방지.
     if (
       !autoExtractAttempted &&
       !extractSlides.isPending &&
       !replacePptx.isPending &&
       project.source_pptx_url &&
-      localSlides.length === 0 &&
-      !slidesLoading
+      !slidesLoading &&
+      slides.length === 0 &&
+      localSlides.length === 0
     ) {
       setAutoExtractAttempted(true)
       runExtraction()
@@ -207,8 +207,9 @@ function ExtractionStepContent({ project, onStepComplete }: ExtractionStepProps)
     extractSlides.isPending,
     replacePptx.isPending,
     project.source_pptx_url,
-    localSlides.length,
     slidesLoading,
+    slides.length,
+    localSlides.length,
     runExtraction,
   ])
 
