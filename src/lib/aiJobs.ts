@@ -51,11 +51,14 @@ export async function runSpellingJob(
   {
     projectId,
     slideIds,
+    resetAllResults = true,
     onProgress,
     onChunkProgress,
   }: {
     projectId: string
     slideIds: string[]
+    /** true면 프로젝트 전체 결과 삭제 후 재검사. false면 지정 슬라이드만 교체(기존 검토 유지) */
+    resetAllResults?: boolean
   } & AiJobProgressCallbacks,
 ): Promise<SpellingCheckSummary> {
   if (slideIds.length === 0) {
@@ -69,8 +72,10 @@ export async function runSpellingJob(
 
   if (statusError) throw statusError
 
-  // 재실행 시 이전 결과가 잠깐 보이지 않도록 비움 (첫 배치 reset 후부터 누적 표시)
-  queryClient.setQueryData([...spellingQueryKey, projectId], [])
+  // 전체 재실행 시에만 캐시를 비움. 부분 재검사는 기존 검토 결과를 유지한다.
+  if (resetAllResults) {
+    queryClient.setQueryData([...spellingQueryKey, projectId], [])
+  }
 
   const batches: string[][] = []
   for (let i = 0; i < slideIds.length; i += SPELLING_BATCH_SIZE) {
@@ -92,7 +97,7 @@ export async function runSpellingJob(
     )
 
     const result = await spellingCheck(projectId, batches[i], {
-      resetResults: i === 0,
+      resetResults: resetAllResults && i === 0,
       finalize: i === batches.length - 1,
     })
 

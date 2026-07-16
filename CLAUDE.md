@@ -97,7 +97,7 @@ uploaded → extracted → spelling → spelling_done → translating → transl
 /projects/new           새 프로젝트 생성
 /projects/:id           프로젝트 상세 (단계별 스텝)
   Step1: 추출 확인
-  Step2: 맞춤법 검사 — 변경·제외 검토 후 슬라이드 일괄 적용·되돌리기
+  Step2: 맞춤법 검사 — 변경·검토 필요 항목만 표시, 누락 슬라이드 부분 재검사·무시 완료 가능
   Step3: 번역·역번역 검증 (통합)
   Step4: 전문가 검증 요청 (링크 생성) + 검토 현황 표
   Step5: 완료 → 다운로드
@@ -242,6 +242,12 @@ const KO_CPM = 320
 - primary: `#162B52` (네이비), accent: `#4B40E0` (인디고)
 - nextBMS 스타일 유틸 클래스(`nb-*`) — `src/index.css`, `Layout.tsx`
 - Tailwind 설정: `tailwind.config.js` + `src/index.css`
+
+## 구현 현황 (2026-07-16)
+
+### 완료
+- [x] 맞춤법 Step 2: 이상 없음·검사 제외는 목록 숨김, 변경·검토·미반영만 표시
+- [x] 맞춤법 결과 누락 슬라이드: 기존 검토 유지한 채 누락분만 재검사 / 무시하고 `spelling_done` 진행
 
 ## 구현 현황 (2026-07-10)
 

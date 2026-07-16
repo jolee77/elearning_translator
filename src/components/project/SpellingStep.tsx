@@ -159,6 +159,33 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
     return { pendingSlides, clearSlides, excludedSlides, missingSlides }
   }, [slideReviewGroups])
 
+  const missingSlideIds = useMemo(
+    () =>
+      slideReviewGroups
+        .filter((g) => g.coverage === 'not_checked' && g.spellable.length > 0)
+        .map((g) => g.slide.id),
+    [slideReviewGroups],
+  )
+
+  /** 변경·검토·반영 대기 / 결과 누락만 화면에 표시 (이상 없음·검사 제외 숨김) */
+  const visibleSlideGroups = useMemo(() => {
+    return slideReviewGroups
+      .map((group) => {
+        const actionableResults = group.slideResults.filter((result) => {
+          const status = getSpellingItemStatus(result)
+          return (
+            status === 'pending' ||
+            (status === 'approved' && !result.committed_to_slide)
+          )
+        })
+        return { ...group, slideResults: actionableResults }
+      })
+      .filter((group) => {
+        if (group.coverage === 'not_checked' && group.spellable.length > 0) return true
+        return group.slideResults.length > 0
+      })
+  }, [slideReviewGroups])
+
   const pendingReview = useMemo(
     () => results.filter(isSpellingPendingReview),
     [results],
@@ -193,6 +220,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
   const fullyCommitted = canCompleteSpellingReview(results)
   const canCompleteReview =
     checkCompleted && fullyCommitted && checkPhase !== 'running'
+  const hasMissingResults = !isRunning && reviewStats.missingSlides > 0 && results.length > 0
 
   const activeWorkflowStep = useMemo(() => {
     if (!checkCompleted) return 0
@@ -242,6 +270,28 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       projectTitle: project.title,
       slideIds: eligibleSlides.map((s) => s.id),
       spellableSlideCount,
+      resetAllResults: true,
+    })
+  }
+
+  const handleRecheckMissing = () => {
+    if (!accessible) {
+      showToast(stepPrerequisiteMessage(2), 'error')
+      return
+    }
+    if (missingSlideIds.length === 0) {
+      showToast('재검사할 누락 슬라이드가 없습니다.', 'error')
+      return
+    }
+
+    setLastSummary(null)
+    setLocalError(false)
+    startSpellingJob({
+      projectId: project.id,
+      projectTitle: project.title,
+      slideIds: missingSlideIds,
+      spellableSlideCount: missingSlideIds.length,
+      resetAllResults: false,
     })
   }
 
@@ -355,7 +405,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
     }
   }
 
-  const handleComplete = async () => {
+  const handleComplete = async (options?: { ignoreMissing?: boolean }) => {
     if (!reviewSettled) {
       showToast('아직 검토하지 않은 수정안이 있습니다. 변경 또는 제외를 선택해 주세요.', 'error')
       return
@@ -367,10 +417,24 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
       )
       return
     }
+    if (reviewStats.missingSlides > 0 && !options?.ignoreMissing) {
+      showToast(
+        `결과 누락 ${reviewStats.missingSlides}슬라이드가 있습니다. 누락분만 다시 검사하거나 「누락 무시하고 완료」를 선택해 주세요.`,
+        'error',
+      )
+      return
+    }
 
     try {
       await completeReview.mutateAsync({ projectId: project.id })
-      showToast('맞춤법 검토가 완료되었습니다. 번역 단계로 진행할 수 있습니다.', 'success')
+      const skippedNote =
+        options?.ignoreMissing && reviewStats.missingSlides > 0
+          ? ` (누락 ${reviewStats.missingSlides}슬라이드 미검사 통과)`
+          : ''
+      showToast(
+        `맞춤법 검토가 완료되었습니다. 번역 단계로 진행할 수 있습니다.${skippedNote}`,
+        'success',
+      )
       onStepComplete?.()
     } catch (err) {
       showToast(getErrorMessage(err, '완료 처리에 실패했습니다.'), 'error')
@@ -413,22 +477,49 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                 검토 필요 {reviewStats.pendingSlides}슬라이드
               </span>
             )}
-            <span className="rounded-full bg-sky-100 px-2.5 py-1 text-sky-900">
-              이상 없음 {reviewStats.clearSlides}슬라이드
-            </span>
+            {reviewStats.clearSlides > 0 && (
+              <span className="rounded-full bg-sky-100 px-2.5 py-1 text-sky-900">
+                이상 없음·검토 완료 {reviewStats.clearSlides}슬라이드 (목록 숨김)
+              </span>
+            )}
             {reviewStats.excludedSlides > 0 && (
               <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">
-                검사 제외 {reviewStats.excludedSlides}슬라이드
+                검사 제외 {reviewStats.excludedSlides}슬라이드 (목록 숨김)
               </span>
             )}
             {reviewStats.missingSlides > 0 && (
               <span className="rounded-full bg-red-100 px-2.5 py-1 font-medium text-red-800">
                 {isRunning
                   ? `검사 대기 ${reviewStats.missingSlides}슬라이드`
-                  : `결과 누락 ${reviewStats.missingSlides}슬라이드 — 다시 실행해 주세요`}
+                  : `결과 누락 ${reviewStats.missingSlides}슬라이드`}
               </span>
             )}
           </div>
+
+          {hasMissingResults && (
+            <div className="nb-summary-bar">
+              <span className="text-xs text-red-800">
+                결과 누락 {reviewStats.missingSlides}슬라이드 — 기존 검토는 유지한 채 누락분만
+                재검사하거나, 무시하고 다음 단계로 진행할 수 있습니다.
+              </span>
+              <button
+                type="button"
+                onClick={handleRecheckMissing}
+                disabled={isBusy}
+                className="nb-btn-secondary text-xs"
+              >
+                누락분만 다시 검사 ({reviewStats.missingSlides})
+              </button>
+              <button
+                type="button"
+                onClick={() => handleComplete({ ignoreMissing: true })}
+                disabled={isBusy || !canCompleteReview}
+                className="nb-btn-primary text-xs"
+              >
+                누락 무시하고 완료
+              </button>
+            </div>
+          )}
 
           {pendingReview.length > 0 && !isRunning && (
             <div className="nb-summary-bar">
@@ -489,7 +580,14 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
             </div>
           )}
 
-          {slideReviewGroups.map(({ slide, slideResults, spellable, coverage }) => (
+          {visibleSlideGroups.length === 0 ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-6 text-center text-sm text-emerald-800">
+              변경·검토가 필요한 항목이 없습니다.
+              {reviewStats.clearSlides > 0 &&
+                ` 이상 없음·검토 완료 ${reviewStats.clearSlides}슬라이드는 목록에서 숨겼습니다.`}
+            </div>
+          ) : (
+            visibleSlideGroups.map(({ slide, slideResults, spellable, coverage }) => (
             <div
               key={slide.id}
               className={`nb-card overflow-hidden ${spellingSlideCardClass(coverage)}`}
@@ -510,13 +608,13 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                   </span>
                   {slideResults.length > 0 && (
                     <span className="text-xs text-gray-500">
-                      ({slideResults.length}개 필드 검사)
+                      (검토 대상 {slideResults.length}건)
                     </span>
                   )}
                 </div>
                 <p className="mt-1 text-xs text-gray-600">
                   {coverage === 'not_checked' && spellable.length > 0 && results.length > 0
-                    ? '검사 결과가 누락되었습니다. 맞춤법 검사를 다시 실행해 주세요.'
+                    ? '검사 결과가 누락되었습니다. 「누락분만 다시 검사」하거나 「누락 무시하고 완료」할 수 있습니다.'
                     : slideCoverageReason(coverage, slide, slideResults)}
                 </p>
               </div>
@@ -564,9 +662,6 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                           )}
                           {itemStatus === 'committed' && (
                             <span className="text-xs font-medium text-indigo-700">슬라이드 반영됨</span>
-                          )}
-                          {itemStatus === 'no_change' && (
-                            <span className="text-xs font-medium text-sky-700">이상 없음</span>
                           )}
                         </div>
 
@@ -648,11 +743,14 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
                 <div className="px-4 py-3 text-xs text-gray-500">
                   {spellable.length === 0
                     ? '화면텍스트·나레이션이 없어 검사하지 않았습니다.'
-                    : '검사 결과가 없습니다.'}
+                    : coverage === 'not_checked'
+                      ? '검사 결과가 없습니다. 위 「누락분만 다시 검사」를 실행해 주세요.'
+                      : '검사 결과가 없습니다.'}
                 </div>
               )}
             </div>
-          ))}
+            ))
+          )}
         </div>
       )
     }
@@ -699,6 +797,7 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
           <h3 className="nb-step-title">Step 2. 맞춤법 검사</h3>
           <p className="nb-step-desc">
             추출 텍스트를 AI로 검사하고, 변경·제외로 검토한 뒤 번역 전에 슬라이드에 일괄 반영합니다.
+            이상 없음 항목은 목록에서 숨기고, 변경·검토가 필요한 항목만 표시합니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -713,9 +812,14 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
           </button>
           <button
             type="button"
-            onClick={handleComplete}
-            disabled={isBusy || !canCompleteReview}
+            onClick={() => handleComplete()}
+            disabled={isBusy || !canCompleteReview || hasMissingResults}
             className="nb-btn-primary"
+            title={
+              hasMissingResults
+                ? '결과 누락 슬라이드가 있습니다. 아래 「누락분만 다시 검사」또는 「누락 무시하고 완료」를 사용하세요.'
+                : undefined
+            }
           >
             {completeReview.isPending && <Spinner className="text-white" />}
             {completeReview.isPending ? '처리 중...' : '검토 완료 → 번역'}
@@ -777,9 +881,16 @@ export function SpellingStep({ project, onStepComplete }: SpellingStepProps) {
         </div>
       )}
 
-      {checkCompleted && fullyCommitted && results.length > 0 && (
+      {checkCompleted && fullyCommitted && results.length > 0 && !hasMissingResults && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           검토와 슬라이드 반영이 완료되었습니다. 「검토 완료 → 번역」으로 다음 단계로 진행하세요.
+        </div>
+      )}
+
+      {checkCompleted && fullyCommitted && hasMissingResults && (
+        <div className="nb-alert nb-alert--warning">
+          결과 누락 {reviewStats.missingSlides}슬라이드가 있습니다. 「누락분만 다시 검사」하거나
+          「누락 무시하고 완료」로 다음 단계로 진행하세요.
         </div>
       )}
 

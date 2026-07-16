@@ -41,6 +41,8 @@ interface StartSpellingParams {
   projectTitle: string
   slideIds: string[]
   spellableSlideCount: number
+  /** false면 지정 슬라이드만 재검사하고 기존 검토 결과를 유지 */
+  resetAllResults?: boolean
 }
 
 interface StartTranslateParams {
@@ -137,16 +139,19 @@ export function AiJobProvider({ children }: { children: ReactNode }) {
 
       void (async () => {
         try {
+          const resetAll = params.resetAllResults !== false
           const summary = await runSpellingJob(queryClient, {
             projectId: params.projectId,
             slideIds: params.slideIds,
+            resetAllResults: resetAll,
             onChunkProgress: (progress) => updateJob(key, { progress }),
           })
 
-          const successMessage =
-            summary.changeCount > 0
+          const successMessage = resetAll
+            ? summary.changeCount > 0
               ? `검사 완료: 텍스트 있음 ${params.spellableSlideCount}개 슬라이드 전체 검사, 검토 필요 ${summary.changeCount}건`
               : `검사 완료: 텍스트 있음 ${params.spellableSlideCount}개 슬라이드 전체 검사, 수정이 필요한 항목이 없습니다.`
+            : `누락 ${params.slideIds.length}개 슬라이드 재검사 완료 (${summary.resultCount}건 결과)`
 
           finishJob(key, {
             status: 'done',
