@@ -403,11 +403,39 @@ function isSubtitleBand(x: number, y: number, w: number, h: number): boolean {
   return xR > 0.08 && xR < 0.5 && yR >= 0.07 && yR < 0.2 && yBottom <= 0.28
 }
 
-/** 좌측 목차: 박스 전체가 좌측 25% 안에 있을 때만 */
+/** 좌측 목차: 박스 전체가 좌측 25% 안, 또는 세로로 긴 좌측 인덱스 패널 */
 function isMenu(x: number, y: number, w: number, h: number): boolean {
-  const xRight = (x + w) / SB_CX
-  const yBottom = (y + h) / SB_CY
-  return xRight <= 0.25 && y / SB_CY >= 0.08 && yBottom <= 0.78
+  const boxW = Math.max(w, 1)
+  const boxH = Math.max(h, 1)
+  const xRight = (x + boxW) / SB_CX
+  const yR = y / SB_CY
+  const yBottom = (y + boxH) / SB_CY
+  const hR = boxH / SB_CY
+  // 레이아웃 좌측 목차 패널 (폭은 좁고 높이는 큼)
+  if (xRight <= 0.18 && hR >= 0.35 && yR >= 0.05 && yR < 0.85) return true
+  return xRight <= 0.25 && yR >= 0.08 && yBottom <= 0.78
+}
+
+/** 목차 항목이 한 박스에 이어 붙은 경우 (시작하기INTRO학습열기학습목표…) */
+function isConcatenatedIndexText(text: string): boolean {
+  const t = text.replace(/\s+/g, '')
+  if (t.length < 12) return false
+  const markers = [
+    '학습열기',
+    '학습목표',
+    '학습하기',
+    '시작하기',
+    '적용하기',
+    '평가하기',
+    'INTRO',
+    'OUTRO',
+    'INDEX',
+  ]
+  let hits = 0
+  for (const m of markers) {
+    if (t.includes(m)) hits += 1
+  }
+  return hits >= 3
 }
 
 const SCREEN_REGION = {
@@ -787,10 +815,26 @@ export function isSyncMarkerOnly(text: string): boolean {
   return isBareSyncMarker(text) || /^#\d+\s*$/.test(text.trim())
 }
 
+/** 슬라이드마다 반복되는 짧은 구간 라벨 (상단 부제목 밴드에서만 화면텍스트 제외) */
+function isShortSectionChromeLabel(text: string): boolean {
+  const t = text.replace(/\s+/g, ' ').trim()
+  return /^(▶\s*)?(학습열기|학습목표|학습하기|학습내용|시작하기|적용하기|평가하기)$/u.test(t)
+}
+
+function isSubtitleOnlySectionChrome(s: RawShape): boolean {
+  if (!isShortSectionChromeLabel(s.text)) return false
+  // 상단 부제목 줄(대략 y<14%)·chapter 좌표만 제외. 본문 섹션 헤더는 유지
+  return s.y / SB_CY < 0.14 || isChapterName(s.x, s.y, s.w, s.h)
+}
+
 function isLayoutChrome(s: RawShape): boolean {
   const region = classifyShapeRegion(s.x, s.y, s.w, s.h)
 
+  if (isConcatenatedIndexText(s.text)) return true
+  if (isSubtitleOnlySectionChrome(s)) return true
+
   // 부제목(chapter) 밴드는 화면텍스트로 유지 — isChapterName으로 제외하지 않음
+  // (단, 위의 짧은 구간 라벨·목차 이어붙임은 이미 제외)
   if (isSubtitleBand(s.x, s.y, s.w, s.h) || isChapterName(s.x, s.y, s.w, s.h)) {
     return (
       isScreenNumText(s.text) ||
@@ -833,28 +877,86 @@ function rawShapeToBox(s: RawShape, index: number): SlideTextBox {
   }
 }
 
+function screenTextMatchKey(text: string): string {
+  return text
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, '')
+    .trim()
+}
+
+/**
+ * 화면텍스트 읽기 순서:
+ * 1) 상단 부제목·넓은 타이틀
+ * 2) 좌측에 세로 스택(2개 이상) + 우측 텍스트가 있으면 왼→오 컬럼 순
+ * 3) 그 외는 위→아래 (기존)
+ */
+export function sortShapesReadingOrder<T extends { x: number; y: number; w: number; h: number }>(
+  shapes: T[],
+): T[] {
+  if (shapes.length <= 1) return shapes
+
+  const isBanner = (b: T) => {
+    const yR = b.y / SB_CY
+    const wR = Math.max(b.w, 1) / SB_CX
+    if (isSubtitleBand(b.x, b.y, b.w, b.h) || isChapterName(b.x, b.y, b.w, b.h)) return true
+    return yR < 0.2 && wR >= 0.28
+  }
+
+  const byPos = (a: T, b: T) => a.y - b.y || a.x - b.x
+  const banners = shapes.filter(isBanner).sort(byPos)
+  const rest = shapes.filter((b) => !isBanner(b))
+  if (rest.length === 0) return banners
+
+  // 좌측 전용(오른끝 < 40%) vs 우측 전용(왼끝 > 45%) — 겹치는 와이드 박스는 중간
+  const clearLeft = rest.filter((s) => (s.x + Math.max(s.w, 1)) / SB_CX < 0.4)
+  const clearRight = rest.filter((s) => s.x / SB_CX > 0.45)
+  const middle = rest.filter((s) => !clearLeft.includes(s) && !clearRight.includes(s))
+
+  // 좌측에 세로로 쌓인 항목이 있을 때만 컬럼 모드 (자막/vs/캡션 + 우측 설명)
+  if (clearLeft.length >= 2 && clearRight.length >= 1) {
+    return [
+      ...banners,
+      ...clearLeft.sort(byPos),
+      ...middle.sort(byPos),
+      ...clearRight.sort(byPos),
+    ]
+  }
+
+  return [...banners, ...rest.sort(byPos)]
+}
+
+/** 같은 슬라이드에서 동일 문구 중복 박스 제거 (학습목표 2회 등) */
+function dedupeScreenShapes(shapes: RawShape[]): RawShape[] {
+  const seen = new Set<string>()
+  const result: RawShape[] = []
+  for (const s of shapes) {
+    const key = screenTextMatchKey(s.text)
+    if (!key) continue
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(s)
+  }
+  return result
+}
+
 function findFallbackScreenText(shapes: RawShape[]): SlideTextBox[] {
-  return shapes
-    .filter((s) => {
-      if (!s.text.trim() || isScreenTextExcluded(s)) return false
-      return classifyShapeRegion(s.x, s.y, s.w, s.h) === 'screen' && !isMenu(s.x, s.y, s.w, s.h)
-    })
-    .sort((a, b) => a.y - b.y || a.x - b.x)
-    .map(rawShapeToBox)
+  const filtered = shapes.filter((s) => {
+    if (!s.text.trim() || isScreenTextExcluded(s)) return false
+    return classifyShapeRegion(s.x, s.y, s.w, s.h) === 'screen' && !isMenu(s.x, s.y, s.w, s.h)
+  })
+  return dedupeScreenShapes(sortShapesReadingOrder(filtered)).map(rawShapeToBox)
 }
 
 function toScreenBoxes(shapes: RawShape[], _slideType: SlideType): SlideTextBox[] {
-  const primary = shapes
-    .filter(
-      (s) =>
-        s.text.trim() &&
-        classifyShapeRegion(s.x, s.y, s.w, s.h) === 'screen' &&
-        !isScreenTextExcluded(s),
-    )
-    .sort((a, b) => a.y - b.y || a.x - b.x)
-    .map((s, i) => rawShapeToBox(s, i))
+  const primary = shapes.filter(
+    (s) =>
+      s.text.trim() &&
+      classifyShapeRegion(s.x, s.y, s.w, s.h) === 'screen' &&
+      !isScreenTextExcluded(s),
+  )
 
-  if (primary.length > 0) return primary
+  const ordered = dedupeScreenShapes(sortShapesReadingOrder(primary))
+  if (ordered.length > 0) return ordered.map((s, i) => rawShapeToBox(s, i))
   return findFallbackScreenText(shapes)
 }
 
