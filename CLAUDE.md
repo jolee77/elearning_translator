@@ -212,11 +212,13 @@ const KO_CPM = 320
 - expert_reviews 테이블에 token(hex 32bytes) 생성 — `extensions.gen_random_bytes` 사용
 - /review/:token URL을 설계담당자가 수동으로 전문가에게 공유
 - 전문가는 로그인 없이 해당 URL로 접속
-- 상세 패널 필드 순서: 한국어 원문 → 번역문(수정 가능) → 역번역
+- 상세 패널: 한국어 원문 → 1차 번역(읽기전용) → 역번역 검증(읽기전용) → 최종 번역 검토 결과(수정) → 코멘트(버튼으로 펼침)
 - 항목 「완료 → 다음」저장 시 다음 미검토 항목으로 자동 이동 (목록 스크롤 연동)
+- 최종 제출 전 「다시 수정」으로 항목 재편집 가능. 「전체 검증 완료」 시 확인 알럿(vi: 한·베 병기)
 - 설계자 Step5·6 수정 건수: `useExpertReviewItems(reviewId, projectId)`로 translations 조인 (`vi_text` vs `original_vi_text` 스냅샷 — 현재문으로 대체하지 않음)
 - Step5 새로고침·진행 중 폴링 시 items도 재조회. 전문가 화면에도 「번역 수정 N건」·행 단위 「수정됨」표시
 - Step6 「변경 내역」: 맞춤법(committed) → 번역/역번역(change_logs) → 전문가(original_vi_text 또는 change_logs)
+- 산출물 파일명: 업로드 원본명 + `_VN` (예: `foo.pptx` → `foo_VN.pptx`)
 - get_expert_review_by_token(token) RPC로 데이터 조회
 - save_expert_review_item(token, ...) RPC로 저장 (번역문 변경 시 change_logs `expert_review_edited` 기록, RLS 우회)
 - 전문가가 모든 항목 완료 시 expert_reviews.status = 'done'

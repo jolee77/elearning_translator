@@ -36,6 +36,27 @@ function findNextPendingId(
   return null
 }
 
+function primaryTranslation(item: ExpertReviewItem): string {
+  return item.original_vi_text ?? item.vi_text ?? ''
+}
+
+function confirmFinalSubmit(targetLang: string): boolean {
+  if (targetLang === 'vi') {
+    return window.confirm(
+      [
+        '전체 검증을 최종 제출하시겠습니까?',
+        'Bạn có chắc chắn muốn gửi kết quả xác minh cuối cùng không?',
+        '',
+        '제출 후에는 더 이상 수정할 수 없습니다.',
+        'Sau khi gửi, bạn sẽ không thể chỉnh sửa thêm.',
+      ].join('\n'),
+    )
+  }
+  return window.confirm(
+    '전체 검증을 최종 제출하시겠습니까?\n제출 후에는 더 이상 수정할 수 없습니다.',
+  )
+}
+
 export function ExpertReviewPage() {
   const { token } = useParams<{ token: string }>()
   const { showToast } = useToast()
@@ -46,6 +67,7 @@ export function ExpertReviewPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [localTexts, setLocalTexts] = useState<Record<string, string>>({})
   const [localComments, setLocalComments] = useState<Record<string, string>>({})
+  const [commentOpen, setCommentOpen] = useState(false)
   const selectedRowRef = useRef<HTMLTableRowElement | null>(null)
   const localTextsRef = useRef(localTexts)
   const localCommentsRef = useRef(localComments)
@@ -72,14 +94,15 @@ export function ExpertReviewPage() {
     ? findNextPendingId(sortedItems, selectedItem.id)
     : null
 
-  // 서버 항목이 새로 생길 때만 초기화 — 이미 편집 중인 초안은 덮어쓰지 않음
+  // 서버 항목이 새로 생길 때만 초기화 — 이미 입력 중인 초안은 덮어쓰지 않음
   useEffect(() => {
     if (!data?.items) return
     setLocalTexts((prev) => {
       const next = { ...prev }
       for (const item of data.items) {
         if (next[item.id] === undefined) {
-          next[item.id] = item.vi_text ?? ''
+          // 최종 검토 박스: 현재 저장값, 없으면 1차 번역
+          next[item.id] = item.vi_text ?? primaryTranslation(item)
         }
       }
       return next
@@ -106,18 +129,22 @@ export function ExpertReviewPage() {
     selectedRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [selectedId])
 
+  useEffect(() => {
+    setCommentOpen(Boolean(selectedItem?.comment?.trim() || localComments[selectedItem?.id ?? '']?.trim()))
+  }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps -- 항목 전환 시에만 초기화
+
   const stats = useMemo(() => {
     const base = getExpertReviewStats(sortedItems)
-    // 저장 전 로컬 초안 기준으로도 수정 건수 표시 (즉시 피드백)
     const changed = sortedItems.filter((item) => {
       const draft = localTexts[item.id] ?? item.vi_text
-      return isExpertTextChanged(item.original_vi_text, draft)
+      return isExpertTextChanged(primaryTranslation(item), draft)
     }).length
     return { ...base, changed }
   }, [sortedItems, localTexts])
 
   const isReviewDone = data?.review.status === 'done'
-  const langName = data ? getLangConfig(data.project.target_lang).name : ''
+  const targetLang = data?.project.target_lang ?? 'vi'
+  const langName = data ? getLangConfig(targetLang).name : ''
 
   const handleRevertItem = async (item: ExpertReviewItem) => {
     if (!token) return
@@ -138,10 +165,9 @@ export function ExpertReviewPage() {
     if (!token) return
 
     const advanceToId = findNextPendingId(sortedItems, item.id)
-    // ref로 최신 초안을 읽어 refetch/effect 타이밍에 값이 유실되지 않게 함
     const viText = localTextsRef.current[item.id] ?? item.vi_text ?? ''
     const comment = localCommentsRef.current[item.id] || undefined
-    const textChanged = isExpertTextChanged(item.original_vi_text, viText)
+    const textChanged = isExpertTextChanged(primaryTranslation(item), viText)
 
     try {
       await saveItem.mutateAsync({
@@ -151,7 +177,6 @@ export function ExpertReviewPage() {
         viText,
         comment,
       })
-      // 저장한 값을 로컬에 고정 (서버 refetch가 늦어도 표시 유지)
       setLocalTexts((prev) => ({ ...prev, [item.id]: viText }))
       if (comment !== undefined) {
         setLocalComments((prev) => ({ ...prev, [item.id]: comment }))
@@ -183,6 +208,7 @@ export function ExpertReviewPage() {
       showToast('아직 검토하지 않은 항목이 있습니다.', 'error')
       return
     }
+    if (!confirmFinalSubmit(targetLang)) return
 
     try {
       await completeReview.mutateAsync({ token })
@@ -196,6 +222,13 @@ export function ExpertReviewPage() {
     selectedItem != null && isItemReviewed(selectedItem) && !isReviewDone
 
   const isBusy = saveItem.isPending || completeReview.isPending
+  const firstTranslation = selectedItem ? primaryTranslation(selectedItem) : ''
+  const finalDraft = selectedItem
+    ? (localTexts[selectedItem.id] ?? selectedItem.vi_text ?? firstTranslation)
+    : ''
+  const draftChanged = selectedItem
+    ? isExpertTextChanged(firstTranslation, finalDraft)
+    : false
 
   if (isLoading) {
     return (
@@ -258,6 +291,11 @@ export function ExpertReviewPage() {
               }
             />
           </div>
+          {!isReviewDone && (
+            <p className="mt-2 text-xs text-gray-500">
+              항목 저장 후에도 최종 제출 전이면 「다시 수정」으로 내용을 바꿀 수 있습니다.
+            </p>
+          )}
         </div>
 
         {sortedItems.length === 0 ? (
@@ -286,7 +324,7 @@ export function ExpertReviewPage() {
                       const reviewed = isItemReviewed(item)
                       const isSelected = item.id === selectedId
                       const draft = localTexts[item.id] ?? item.vi_text
-                      const changed = isExpertTextChanged(item.original_vi_text, draft)
+                      const changed = isExpertTextChanged(primaryTranslation(item), draft)
 
                       return (
                         <tr
@@ -338,24 +376,34 @@ export function ExpertReviewPage() {
                 <div className="space-y-4 p-4">
                   <div>
                     <p className="nb-field-label">한국어 원문</p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
-                      {selectedItem.source}
+                    <p className="mt-1 whitespace-pre-wrap rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-800">
+                      {selectedItem.source || '-'}
                     </p>
                   </div>
 
                   <div>
-                    <p className="nb-field-label">번역문 ({langName})</p>
-                    {selectedItem.original_vi_text &&
-                      isExpertTextChanged(
-                        selectedItem.original_vi_text,
-                        localTexts[selectedItem.id] ?? selectedItem.vi_text,
-                      ) && (
-                        <p className="mt-1 text-xs text-amber-700">
-                          검토 전 번역문과 다릅니다. 저장 시 수정 건수에 반영됩니다.
-                        </p>
-                      )}
+                    <p className="nb-field-label">1차 번역 ({langName})</p>
+                    <p className="mt-1 whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                      {firstTranslation || '-'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="nb-field-label">역번역 검증 (한국어)</p>
+                    <p className="mt-1 whitespace-pre-wrap rounded-lg border border-[#91caff] bg-[#f0f9ff] p-3 text-sm text-gray-800">
+                      {selectedItem.back_translation?.trim() || '역번역 결과가 없습니다.'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="nb-field-label">최종 번역 검토 결과 ({langName})</p>
+                    {draftChanged && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        1차 번역과 다릅니다. 저장 시 수정 건수에 반영됩니다.
+                      </p>
+                    )}
                     <AutoResizeTextarea
-                      value={localTexts[selectedItem.id] ?? selectedItem.vi_text ?? ''}
+                      value={finalDraft}
                       onChange={(e) =>
                         setLocalTexts((prev) => ({
                           ...prev,
@@ -367,30 +415,43 @@ export function ExpertReviewPage() {
                     />
                   </div>
 
-                  {selectedItem.back_translation && (
-                    <div>
-                      <p className="nb-field-label">역번역 (한국어)</p>
-                      <p className="mt-1 whitespace-pre-wrap rounded-lg border border-[#91caff] bg-[#f0f9ff] p-3 text-sm text-gray-800">
-                        {selectedItem.back_translation}
-                      </p>
-                    </div>
-                  )}
-
                   <div>
-                    <label className="nb-field-label">코멘트</label>
-                    <AutoResizeTextarea
-                      value={localComments[selectedItem.id] ?? ''}
-                      onChange={(e) =>
-                        setLocalComments((prev) => ({
-                          ...prev,
-                          [selectedItem.id]: e.target.value,
-                        }))
-                      }
-                      disabled={isReviewDone || isBusy || selectedReviewed}
-                      minRows={2}
-                      placeholder="검토 의견을 입력하세요 (선택)"
-                      className="nb-textarea mt-1"
-                    />
+                    {!commentOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => setCommentOpen(true)}
+                        disabled={isReviewDone || isBusy || selectedReviewed}
+                        className="nb-btn-secondary text-xs"
+                      >
+                        코멘트 추가 (선택)
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="nb-field-label mb-0">코멘트 (선택)</label>
+                          <button
+                            type="button"
+                            onClick={() => setCommentOpen(false)}
+                            className="text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            접기
+                          </button>
+                        </div>
+                        <AutoResizeTextarea
+                          value={localComments[selectedItem.id] ?? ''}
+                          onChange={(e) =>
+                            setLocalComments((prev) => ({
+                              ...prev,
+                              [selectedItem.id]: e.target.value,
+                            }))
+                          }
+                          disabled={isReviewDone || isBusy || selectedReviewed}
+                          minRows={2}
+                          placeholder="검토 의견을 입력하세요 (선택)"
+                          className="nb-textarea"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {!isReviewDone && (
@@ -437,11 +498,15 @@ export function ExpertReviewPage() {
               className="nb-btn-primary w-full justify-center"
             >
               {completeReview.isPending && <Spinner className="text-white" />}
-              {completeReview.isPending ? '처리 중...' : '전체 검증 완료'}
+              {completeReview.isPending ? '처리 중...' : '전체 검증 완료 (최종 제출)'}
             </button>
-            {stats.pending > 0 && (
+            {stats.pending > 0 ? (
               <p className="mt-2 text-center text-xs text-gray-500">
                 모든 항목을 검토 완료한 후 전체 검증을 마칠 수 있습니다.
+              </p>
+            ) : (
+              <p className="mt-2 text-center text-xs text-gray-500">
+                최종 제출 전에도 목록에서 항목을 선택해 「다시 수정」할 수 있습니다.
               </p>
             )}
           </div>

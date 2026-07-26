@@ -41,8 +41,17 @@ const ACTION_LABELS: Record<ChangeLogAction, string> = {
   download: '다운로드',
 }
 
-function safeFilename(title: string): string {
-  return title.replace(/[<>:"/\\|?*]/g, '_').trim() || 'project'
+function safeFilename(name: string): string {
+  return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'project'
+}
+
+/** 업로드 원본 파일명 기준 산출물 base (확장자 제거). 예: a.pptx → a */
+function artifactBaseName(project: Project): string {
+  const source = project.source_pptx_name?.trim()
+  if (source) {
+    return safeFilename(source.replace(/\.pptx$/i, ''))
+  }
+  return safeFilename(project.title)
 }
 
 async function fetchAllChangeLogs(projectId: string): Promise<ChangeLog[]> {
@@ -109,7 +118,7 @@ export function DoneStep({ project }: DoneStepProps) {
   const [downloading, setDownloading] = useState<'pptx' | 'xlsx' | 'zip' | 'extract' | null>(null)
 
   const stats = getExpertReviewStats(items)
-  const baseName = safeFilename(project.title)
+  const baseName = artifactBaseName(project)
   const slideNumById = useMemo(
     () => new Map(slides.map((s) => [s.id, s.slide_num])),
     [slides],
