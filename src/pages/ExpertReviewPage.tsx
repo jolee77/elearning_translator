@@ -6,6 +6,7 @@ import { Spinner } from '../components/ui/Spinner'
 import { useToast } from '../hooks/ToastProvider'
 import {
   getExpertReviewStats,
+  isExpertTextChanged,
   useCompleteExpertReview,
   useExpertReviewByToken,
   useSaveExpertReviewItem,
@@ -46,6 +47,10 @@ export function ExpertReviewPage() {
   const [localTexts, setLocalTexts] = useState<Record<string, string>>({})
   const [localComments, setLocalComments] = useState<Record<string, string>>({})
   const selectedRowRef = useRef<HTMLTableRowElement | null>(null)
+  const localTextsRef = useRef(localTexts)
+  const localCommentsRef = useRef(localComments)
+  localTextsRef.current = localTexts
+  localCommentsRef.current = localComments
 
   const slideMap = useMemo(
     () => new Map(data?.slides.map((s) => [s.id, s]) ?? []),
@@ -67,17 +72,27 @@ export function ExpertReviewPage() {
     ? findNextPendingId(sortedItems, selectedItem.id)
     : null
 
+  // 서버 항목이 새로 생길 때만 초기화 — 이미 편집 중인 초안은 덮어쓰지 않음
   useEffect(() => {
     if (!data?.items) return
-    const texts: Record<string, string> = {}
-    const comments: Record<string, string> = {}
-    for (const item of data.items) {
-      texts[item.id] = localTexts[item.id] ?? item.vi_text ?? ''
-      comments[item.id] = localComments[item.id] ?? item.comment ?? ''
-    }
-    setLocalTexts(texts)
-    setLocalComments(comments)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setLocalTexts((prev) => {
+      const next = { ...prev }
+      for (const item of data.items) {
+        if (next[item.id] === undefined) {
+          next[item.id] = item.vi_text ?? ''
+        }
+      }
+      return next
+    })
+    setLocalComments((prev) => {
+      const next = { ...prev }
+      for (const item of data.items) {
+        if (next[item.id] === undefined) {
+          next[item.id] = item.comment ?? ''
+        }
+      }
+      return next
+    })
   }, [data?.items])
 
   useEffect(() => {
@@ -91,7 +106,16 @@ export function ExpertReviewPage() {
     selectedRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [selectedId])
 
-  const stats = getExpertReviewStats(sortedItems)
+  const stats = useMemo(() => {
+    const base = getExpertReviewStats(sortedItems)
+    // 저장 전 로컬 초안 기준으로도 수정 건수 표시 (즉시 피드백)
+    const changed = sortedItems.filter((item) => {
+      const draft = localTexts[item.id] ?? item.vi_text
+      return isExpertTextChanged(item.original_vi_text, draft)
+    }).length
+    return { ...base, changed }
+  }, [sortedItems, localTexts])
+
   const isReviewDone = data?.review.status === 'done'
   const langName = data ? getLangConfig(data.project.target_lang).name : ''
 
@@ -114,20 +138,39 @@ export function ExpertReviewPage() {
     if (!token) return
 
     const advanceToId = findNextPendingId(sortedItems, item.id)
+    // ref로 최신 초안을 읽어 refetch/effect 타이밍에 값이 유실되지 않게 함
+    const viText = localTextsRef.current[item.id] ?? item.vi_text ?? ''
+    const comment = localCommentsRef.current[item.id] || undefined
+    const textChanged = isExpertTextChanged(item.original_vi_text, viText)
 
     try {
       await saveItem.mutateAsync({
         token,
         itemId: item.id,
         status: 'reviewed',
-        viText: localTexts[item.id] ?? item.vi_text,
-        comment: localComments[item.id] || undefined,
+        viText,
+        comment,
       })
+      // 저장한 값을 로컬에 고정 (서버 refetch가 늦어도 표시 유지)
+      setLocalTexts((prev) => ({ ...prev, [item.id]: viText }))
+      if (comment !== undefined) {
+        setLocalComments((prev) => ({ ...prev, [item.id]: comment }))
+      }
       if (advanceToId) {
         setSelectedId(advanceToId)
-        showToast('저장되었습니다. 다음 항목으로 이동합니다.', 'success')
+        showToast(
+          textChanged
+            ? '번역문 수정이 저장되었습니다. 다음 항목으로 이동합니다.'
+            : '저장되었습니다. 다음 항목으로 이동합니다.',
+          'success',
+        )
       } else {
-        showToast('검토가 저장되었습니다. 모든 항목을 검토했습니다.', 'success')
+        showToast(
+          textChanged
+            ? '번역문 수정이 저장되었습니다. 모든 항목을 검토했습니다.'
+            : '검토가 저장되었습니다. 모든 항목을 검토했습니다.',
+          'success',
+        )
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : '저장에 실패했습니다.', 'error')
@@ -200,6 +243,7 @@ export function ExpertReviewPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium text-gray-800">
               진행률: {stats.total - stats.pending}/{stats.total} 완료
+              {` · 번역 수정 ${stats.changed}건`}
             </p>
             {isReviewDone && (
               <span className="nb-badge nb-badge--success">검증 완료</span>
@@ -233,6 +277,7 @@ export function ExpertReviewPage() {
                       <th>슬라이드</th>
                       <th>필드</th>
                       <th>상태</th>
+                      <th>변경</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -240,6 +285,8 @@ export function ExpertReviewPage() {
                       const slide = slideMap.get(item.slide_id)
                       const reviewed = isItemReviewed(item)
                       const isSelected = item.id === selectedId
+                      const draft = localTexts[item.id] ?? item.vi_text
+                      const changed = isExpertTextChanged(item.original_vi_text, draft)
 
                       return (
                         <tr
@@ -263,6 +310,13 @@ export function ExpertReviewPage() {
                             >
                               {reviewed ? '완료' : '대기'}
                             </span>
+                          </td>
+                          <td>
+                            {changed ? (
+                              <span className="nb-badge nb-badge--warning">수정됨</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">-</span>
+                            )}
                           </td>
                         </tr>
                       )
@@ -291,6 +345,15 @@ export function ExpertReviewPage() {
 
                   <div>
                     <p className="nb-field-label">번역문 ({langName})</p>
+                    {selectedItem.original_vi_text &&
+                      isExpertTextChanged(
+                        selectedItem.original_vi_text,
+                        localTexts[selectedItem.id] ?? selectedItem.vi_text,
+                      ) && (
+                        <p className="mt-1 text-xs text-amber-700">
+                          검토 전 번역문과 다릅니다. 저장 시 수정 건수에 반영됩니다.
+                        </p>
+                      )}
                     <AutoResizeTextarea
                       value={localTexts[selectedItem.id] ?? selectedItem.vi_text ?? ''}
                       onChange={(e) =>

@@ -5,6 +5,7 @@ import { useToast } from '../../hooks/ToastProvider'
 import {
   getExpertReviewStats,
   getReviewUrl,
+  isExpertTextChanged,
   useCreateExpertReview,
   useExpertReviewItems,
   useExpertReviews,
@@ -23,8 +24,7 @@ function isItemReviewed(item: ExpertReviewItem): boolean {
 }
 
 function hasTextChange(item: ExpertReviewItem): boolean {
-  if (!item.original_vi_text || !item.vi_text) return false
-  return item.original_vi_text.trim() !== item.vi_text.trim()
+  return isExpertTextChanged(item.original_vi_text, item.vi_text)
 }
 
 export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
@@ -35,7 +35,14 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
 
   // 진행 중 우선, 없으면 최신(완료 포함) — 완료 프로젝트 재진입 시 URL이 사라지지 않도록
   const displayedReview = reviews.find((r) => r.status !== 'done') ?? reviews[0] ?? null
-  const { data: items = [] } = useExpertReviewItems(displayedReview?.id, project.id)
+  const reviewActive = displayedReview != null && displayedReview.status !== 'done'
+  const {
+    data: items = [],
+    refetch: refetchItems,
+    isFetching: isFetchingItems,
+  } = useExpertReviewItems(displayedReview?.id, project.id, {
+    refetchInterval: reviewActive ? 30_000 : false,
+  })
 
   const [reviewerName, setReviewerName] = useState('')
   const [reviewerEmail, setReviewerEmail] = useState('')
@@ -98,7 +105,8 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
   }
 
   const handleRefresh = () => {
-    refetch()
+    void refetch()
+    void refetchItems()
     showToast('상태를 새로고침했습니다.', 'info')
   }
 
@@ -115,7 +123,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
     }
   }
 
-  const isBusy = createReview.isPending || isFetching
+  const isBusy = createReview.isPending || isFetching || isFetchingItems
 
   return (
     <div className="space-y-4">
@@ -180,7 +188,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
               {items.length > 0 && (
                 <p className="text-sm text-gray-600">
                   진행률: {stats.total - stats.pending}/{stats.total}
-                  {stats.changed > 0 && ` · 수정 ${stats.changed}건`}
+                  {` · 번역 수정 ${stats.changed}건`}
                 </p>
               )}
             </div>

@@ -81,6 +81,7 @@ function fromExpertItems(
 function fromFieldChangeLogs(
   logs: ChangeLog[],
   slideNumById: Map<string, number>,
+  expertItemKeys: Set<string>,
 ): TextChangeEntry[] {
   const byKey = new Map<string, TextChangeEntry>()
 
@@ -97,8 +98,13 @@ function fromFieldChangeLogs(
 
   for (const log of sorted) {
     const stage = log.stage as TextChangeStage
-    // 맞춤법·전문가는 전용 소스 우선 (중복 방지)
-    if (stage === 'spelling' || stage === 'expert_review') continue
+    // 맞춤법은 전용 소스 우선
+    if (stage === 'spelling') continue
+    // 전문가: original_vi_text 비교로 이미 잡힌 항목은 중복 제외
+    if (stage === 'expert_review') {
+      const slideId = log.slide_id ?? ''
+      if (expertItemKeys.has(`${slideId}:${log.field}`)) continue
+    }
 
     const slideId = log.slide_id ?? ''
     const key = `${stage}:${slideId}:${log.field}`
@@ -129,10 +135,13 @@ export function buildTextChangeSummary(input: {
   changeLogs: ChangeLog[]
   slideNumById: Map<string, number>
 }): Record<TextChangeStage, TextChangeEntry[]> {
+  const expertEntries = fromExpertItems(input.expertItems, input.slideNumById)
+  const expertItemKeys = new Set(expertEntries.map((e) => `${e.slideId}:${e.field}`))
+
   const entries = [
     ...fromSpellingResults(input.spellingResults, input.slideNumById),
-    ...fromFieldChangeLogs(input.changeLogs, input.slideNumById),
-    ...fromExpertItems(input.expertItems, input.slideNumById),
+    ...fromFieldChangeLogs(input.changeLogs, input.slideNumById, expertItemKeys),
+    ...expertEntries,
   ].sort((a, b) => {
     if (a.slideNum !== b.slideNum) return a.slideNum - b.slideNum
     return a.fieldLabel.localeCompare(b.fieldLabel, 'ko')

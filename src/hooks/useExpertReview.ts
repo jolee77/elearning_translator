@@ -45,7 +45,11 @@ export function useExpertReviews(projectId: string | undefined) {
   })
 }
 
-export function useExpertReviewItems(reviewId: string | undefined, projectId?: string) {
+export function useExpertReviewItems(
+  reviewId: string | undefined,
+  projectId?: string,
+  options?: { refetchInterval?: number | false },
+) {
   return useQuery({
     queryKey: [...expertReviewItemsQueryKey, reviewId, projectId],
     queryFn: async (): Promise<ExpertReviewItem[]> => {
@@ -69,17 +73,18 @@ export function useExpertReviewItems(reviewId: string | undefined, projectId?: s
         (translations ?? []).map((t) => [`${t.slide_id}:${t.field}`, t]),
       )
 
+      // original_vi_text는 스냅샷 그대로 유지 (현재 vi_text로 대체하지 않음)
       return items.map((item) => {
         const tr = trMap.get(`${item.slide_id}:${item.field}`)
         return {
           ...item,
           source: tr?.source,
           vi_text: tr?.vi_text,
-          original_vi_text: item.original_vi_text ?? tr?.vi_text,
         }
       })
     },
-    enabled: !!reviewId,
+    enabled: !!reviewId && !!projectId,
+    refetchInterval: options?.refetchInterval,
   })
 }
 
@@ -204,6 +209,9 @@ export function useSaveExpertReviewItem() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['expert_review_by_token', variables.token] })
+      queryClient.invalidateQueries({ queryKey: expertReviewItemsQueryKey })
+      queryClient.invalidateQueries({ queryKey: ['translations'] })
+      queryClient.invalidateQueries({ queryKey: changeLogsQueryKey })
     },
   })
 }
@@ -223,19 +231,25 @@ export function useCompleteExpertReview() {
       queryClient.invalidateQueries({ queryKey: ['expert_review_by_token', variables.token] })
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: expertReviewsQueryKey })
+      queryClient.invalidateQueries({ queryKey: expertReviewItemsQueryKey })
+      queryClient.invalidateQueries({ queryKey: ['translations'] })
       queryClient.invalidateQueries({ queryKey: changeLogsQueryKey })
     },
   })
 }
 
+/** 검토 전 스냅샷(original_vi_text)과 현재 번역문(vi_text) 비교 */
+export function isExpertTextChanged(
+  originalViText: string | null | undefined,
+  currentViText: string | null | undefined,
+): boolean {
+  if (originalViText == null || currentViText == null) return false
+  return originalViText.trim() !== currentViText.trim()
+}
+
 export function getExpertReviewStats(items: ExpertReviewItem[]) {
   const reviewed = items.filter((i) => i.status !== 'pending').length
   const pending = items.filter((i) => i.status === 'pending').length
-  const changed = items.filter(
-    (i) =>
-      i.original_vi_text &&
-      i.vi_text &&
-      i.original_vi_text.trim() !== i.vi_text.trim(),
-  ).length
+  const changed = items.filter((i) => isExpertTextChanged(i.original_vi_text, i.vi_text)).length
   return { reviewed, pending, changed, total: items.length }
 }
