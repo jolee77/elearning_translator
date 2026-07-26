@@ -20,6 +20,10 @@ interface TextShapeInfo {
 export interface GenerateVnPptxOptions {
   /** 맞춤법 슬라이드 반영분 — PPTX 원문 ↔ translations.source 매칭용 */
   spellingResults?: SpellingResult[]
+  /** slide_id → slide_num — 반복 제목은 첫 등장 슬라이드 번역을 우선 사용 */
+  slideNumsById?: Record<string, number>
+  /** slide_num → slide_id */
+  slideIdByNum?: Record<number, string>
 }
 
 function elementsByLocalName(root: Element, localName: string): Element[] {
@@ -231,22 +235,49 @@ function buildTranslationIndex(
   return { byNorm, byCompact }
 }
 
+type MatchOpts = {
+  preferredSlideId?: string
+  slideNumsById?: Record<string, number>
+}
+
 function pickPreferred(
   matches: Translation[],
   region: 'narration' | 'screen',
   used: Set<string>,
+  opts?: MatchOpts,
 ): Translation | undefined {
   const available = matches.filter((t) => !used.has(t.id) && t.vi_text?.trim())
   if (available.length === 0) return undefined
 
-  const preferred = available.find((t) => {
+  const regionOk = (t: Translation) => {
     if (region === 'narration') {
       return t.field === NARRATION_FIELD_KEY || t.field === 'narration'
     }
     return t.field.startsWith('screen_text') || t.field === 'screen_text'
+  }
+
+  const pool = available.filter(regionOk)
+  const candidates = pool.length > 0 ? pool : available
+
+  const sorted = [...candidates].sort((a, b) => {
+    const na = opts?.slideNumsById?.[a.slide_id] ?? Number.MAX_SAFE_INTEGER
+    const nb = opts?.slideNumsById?.[b.slide_id] ?? Number.MAX_SAFE_INTEGER
+    if (na !== nb) return na - nb
+    return (b.updated_at ?? '').localeCompare(a.updated_at ?? '')
   })
 
-  return preferred ?? available[0]
+  // 화면 텍스트가 여러 슬라이드에 동일 원문으로 반복되면 첫 등장 번역을 공통 적용
+  const distinctSlides = new Set(sorted.map((t) => t.slide_id))
+  if (region === 'screen' && distinctSlides.size > 1) {
+    return sorted[0]
+  }
+
+  if (opts?.preferredSlideId) {
+    const onSlide = sorted.find((t) => t.slide_id === opts.preferredSlideId)
+    if (onSlide) return onSlide
+  }
+
+  return sorted[0]
 }
 
 function findTranslation(
@@ -254,6 +285,7 @@ function findTranslation(
   region: 'narration' | 'screen',
   index: TranslationIndex,
   used: Set<string>,
+  opts?: MatchOpts,
 ): Translation | undefined {
   const trimmed = text.trim()
   if (!trimmed) return undefined
@@ -261,20 +293,9 @@ function findTranslation(
   const norm = normalizePptxMatchKey(trimmed)
   const compact = compactPptxMatchKey(trimmed)
 
-  let found = pickPreferred(index.byNorm.get(norm) ?? [], region, used)
-  if (!found) found = pickPreferred(index.byCompact.get(compact) ?? [], region, used)
-
-  // 줄바꿈만 다른 부분 일치 (화면텍스트가 PPTX에서 쪼개진 경우 보완)
-  if (!found && compact.length >= 12) {
-    const fuzzy: Translation[] = []
-    for (const [key, list] of index.byCompact) {
-      if (key.length < 12) continue
-      if (key === compact || key.includes(compact) || compact.includes(key)) {
-        fuzzy.push(...list)
-      }
-    }
-    found = pickPreferred(fuzzy, region, used)
-  }
+  // 정확·공백제거 일치만 사용 (부분문자열 fuzzy는 다른 슬라이드 번역이 잘못 붙는 원인)
+  let found = pickPreferred(index.byNorm.get(norm) ?? [], region, used, opts)
+  if (!found) found = pickPreferred(index.byCompact.get(compact) ?? [], region, used, opts)
 
   if (found) used.add(found.id)
   return found
@@ -374,11 +395,27 @@ function clearShapeText(shape: Element, doc: Document): void {
   }
 }
 
+/** 번역 오버레이 박스 높이(EMU). cy=0이면 선처럼 보여 선택이 어려움 */
+function estimateOverlayHeight(viText: string, fontSz: number, boxW: number): number {
+  const pt = Math.max(fontSz / 100, 8)
+  const emuPerLine = Math.round(pt * 12_700 * 1.45)
+  const avgCharEmu = Math.round(pt * 12_700 * 0.55)
+  const charsPerLine = Math.max(1, Math.floor(Math.max(boxW, avgCharEmu) / avgCharEmu))
+
+  let totalLines = 0
+  for (const line of viText.split('\n')) {
+    totalLines += Math.max(1, Math.ceil(Math.max(line.length, 1) / charsPerLine))
+  }
+
+  return Math.max(emuPerLine + 20_000, totalLines * emuPerLine + 40_000)
+}
+
 function buildScreenOverlaySpXml(
   shapeId: number,
   x: number,
   y: number,
   w: number,
+  h: number,
   viText: string,
   fontSz: number,
 ): string {
@@ -396,13 +433,13 @@ function buildScreenOverlaySpXml(
   <p:spPr>
     <a:xfrm>
       <a:off x="${x}" y="${y}"/>
-      <a:ext cx="${w}" cy="0"/>
+      <a:ext cx="${w}" cy="${h}"/>
     </a:xfrm>
     <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
     <a:noFill/>
   </p:spPr>
   <p:txBody>
-    <a:bodyPr wrap="square" rtlCol="0"><a:spAutoFit/></a:bodyPr>
+    <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0"><a:spAutoFit/></a:bodyPr>
     <a:lstStyle/>
     ${textParagraphs}
   </p:txBody>
@@ -426,10 +463,20 @@ function insertShapeAfter(
   }
 }
 
+function isSubtitleLikeBox(x: number, y: number, w: number, h: number): boolean {
+  const xR = x / SB_CX
+  const yR = y / SB_CY
+  const yBottom = (y + Math.max(h, 1)) / SB_CY
+  const xRight = (x + Math.max(w, 1)) / SB_CX
+  if (xRight <= 0.25 && yR >= 0.08 && yBottom <= 0.78) return false
+  return xR > 0.08 && xR < 0.5 && yR >= 0.07 && yR < 0.2 && yBottom <= 0.28
+}
+
 function processSlideXml(
   xml: string,
   _slideNum: number,
   index: TranslationIndex,
+  opts?: MatchOpts,
 ): string {
   const doc = new DOMParser().parseFromString(xml, 'application/xml')
   const spTree = firstChildByLocalName(doc.documentElement, 'cSld')
@@ -447,7 +494,7 @@ function processSlideXml(
   // ── 나레이션: 단일 박스만 덮어쓰기 (라벨 없이 한글+베트남어) ──
   const primaryNarr = selectPrimaryNarrationShape(shapes)
   if (primaryNarr) {
-    const tr = findTranslation(primaryNarr.text, 'narration', index, usedTranslations)
+    const tr = findTranslation(primaryNarr.text, 'narration', index, usedTranslations, opts)
     if (tr?.vi_text.trim()) {
       const koText = tr.source.trim() || primaryNarr.text.trim()
       replaceNarrationShape(primaryNarr.shape, doc, koText, tr.vi_text.trim())
@@ -469,26 +516,34 @@ function processSlideXml(
     }
   }
 
-  // ── 화면텍스트: 기존 박스 유지 + 하단에 VI 오버레이 ──
+  // ── 화면텍스트: 원본과 좌측(x) 정렬, 바로 하단에 VI 오버레이 ──
   for (const info of shapes) {
     const trimmed = info.text.trim()
     if (!trimmed) continue
     if (isNarrationBox(info.x, info.y, info.w, info.h)) continue
-    if (info.y / SB_CY < 0.05) continue
+    if (info.y / SB_CY < 0.04) continue
     if (isHashNumberOnly(trimmed)) continue
-    if (!overlapsScreenContent(info.x, info.y, info.w, info.h)) continue
 
-    const tr = findTranslation(trimmed, 'screen', index, usedTranslations)
+    const inScreen =
+      overlapsScreenContent(info.x, info.y, info.w, info.h) ||
+      isSubtitleLikeBox(info.x, info.y, info.w, info.h)
+    if (!inScreen) continue
+
+    const tr = findTranslation(trimmed, 'screen', index, usedTranslations, opts)
     if (!tr?.vi_text.trim()) continue
 
     const fontSz = info.fontSize ?? 1200
-    const overlayY = info.y + info.h + 30_000
+    const vi = tr.vi_text.trim()
+    const overlayW = Math.max(info.w, 200_000)
+    const overlayH = estimateOverlayHeight(vi, fontSz, overlayW)
+    const overlayY = info.y + Math.max(info.h, 1) + 30_000
     const spXml = buildScreenOverlaySpXml(
       nextShapeId++,
       info.x,
       overlayY,
-      info.w,
-      tr.vi_text.trim(),
+      overlayW,
+      overlayH,
+      vi,
       fontSz,
     )
     overlayInsertions.push({ parent: info.parent, shape: info.shape, xml: spXml })
@@ -517,6 +572,8 @@ export async function generateVnPptx(
   const buffer = await sourceFile.arrayBuffer()
   const zip = await JSZip.loadAsync(buffer)
   const index = buildTranslationIndex(translations, options.spellingResults ?? [])
+  const slideNumsById = options.slideNumsById
+  const slideIdByNum = options.slideIdByNum
 
   const slidePaths = sortSlidePaths(
     Object.keys(zip.files).filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path)),
@@ -526,7 +583,10 @@ export async function generateVnPptx(
     const slideNum = i + 1
     const path = slidePaths[i]
     const xml = await zip.file(path)!.async('string')
-    const updated = processSlideXml(xml, slideNum, index)
+    const updated = processSlideXml(xml, slideNum, index, {
+      preferredSlideId: slideIdByNum?.[slideNum],
+      slideNumsById,
+    })
     zip.file(path, updated)
   }
 

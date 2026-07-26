@@ -157,6 +157,8 @@ export function DoneStep({ project }: DoneStepProps) {
       const sourceFile = await downloadSourcePptx(project.source_pptx_url)
       const blob = await generateVnPptx(sourceFile, translations, {
         spellingResults,
+        slideNumsById: Object.fromEntries(slides.map((s) => [s.id, s.slide_num])),
+        slideIdByNum: Object.fromEntries(slides.map((s) => [s.slide_num, s.id])),
       })
       if (blob.size === 0) {
         throw new Error('생성된 PPTX 파일이 비어 있습니다.')
@@ -209,6 +211,8 @@ export function DoneStep({ project }: DoneStepProps) {
 
       const pptxBlob = await generateVnPptx(sourceFile, translations, {
         spellingResults,
+        slideNumsById: Object.fromEntries(slides.map((s) => [s.id, s.slide_num])),
+        slideIdByNum: Object.fromEntries(slides.map((s) => [s.slide_num, s.id])),
       })
       if (pptxBlob.size === 0) {
         throw new Error('생성된 PPTX 파일이 비어 있습니다.')

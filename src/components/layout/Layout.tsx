@@ -94,7 +94,14 @@ export function Layout() {
 
       <div className="nb-main">
         <header className="nb-header">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <NavLink
+              to="/help"
+              className="nb-btn-secondary py-1.5 text-sm"
+              title="이용 절차 도움말"
+            >
+              도움말
+            </NavLink>
             <div className="text-right">
               <p className="text-sm font-medium text-gray-900">{profile?.name ?? '사용자'}</p>
               <p className="text-xs text-gray-500">

@@ -105,6 +105,7 @@ uploaded → extracted → spelling → spelling_done → selection_done → tra
   Step4: 번역·역번역 검증 — Step3 제외분 미포함 (추가 제외 선택 없음)
   Step5: 전문가 검증 요청 (링크 생성) + 검토 현황 표
   Step6: 완료 → 다운로드
+/help                   이용 절차·기능·편의기능 도움말 (헤더 「도움말」)
 /review/:token          전문가 검증 (로그인 없이 토큰, 역번역 포함)
 /admin/settings         관리자 - API 키 설정
 /admin/users            관리자 - 사용자 등록·정보 수정 (이름/이메일/비밀번호/역할)
@@ -119,16 +120,20 @@ EMU: `SB_CX=12192000`, `SB_CY=6858000`.
 - **레이아웃 + 슬라이드** XML만 병합 (`getMergedShapesForSlide`)
 - **슬라이드 마스터** 텍스트(라벨·placeholder)는 추출·번역 **제외**
 - `grpSp` 중첩 그룹 좌표 변환, `<a:br/>` 줄바꿈 유지
+- 단락 내 모든 중첩 run 추출 (괄호 영문 등 래퍼 누락 방지)
+- 좌측 상단 **부제목(chapter) 밴드**는 header chrome이 아니라 화면텍스트로 추출·번역
+- `course_name` / `chapter_name`은 줄바꿈된 문구를 공백으로 이어 전체 유지 (`split('\\n')[0]` 절단 금지)
 
 ### 영역 분류 (겹침 51% 기준, `classifyShapeRegion`)
 | 영역 | 대략적 범위 | 추출 |
 |------|-------------|------|
 | screen | x 13%~75%, y 8%~78% | 화면텍스트 |
+| subtitle | 좌측 상단 부제목 (chapter 밴드) | 화면텍스트 |
 | desc | x 58%~100%, y 8%~63% | 제외 |
 | narration | y 54%~100% | 나레이션 (단일 박스 합침) |
 | image_num | x 58%~100%, y 63%~78% | 제외 |
 | menu | x 0%~25% | 제외 |
-| header | 상단 과정명·회차명 등 | 제외 (화면번호만 `screen_num`) |
+| header | 상단 과정명 등 | 제외 (화면번호만 `screen_num`, 부제목은 screen) |
 | screen_num | x 60%~82%, y 0%~12% | `screen_num` (`01-00`, `01_05` 등) |
 
 desc/image_num은 screen과 영역이 겹침. **도형 중심이 화면 밴드(x 13~75%, y 8~78%) 안이고 screen 겹침이 51% 초과면 screen 우선** — 우측 전용 설명·이미지번호 패널(중심 x≥75%)만 제외.
@@ -173,11 +178,12 @@ KO PPTX를 기반으로 번역 박스를 추가하는 방식.
 
 ### 화면 텍스트 박스 처리
 각 한글 텍스트 박스 하단에 새 텍스트 박스 추가:
-- 위치: 원본 박스 x, y + h + 30000 EMU
-- 크기: 원본 박스와 동일한 w, h는 spAutoFit
+- 위치: 원본 박스와 **동일 x**(좌측 정렬), y + h + 30000 EMU
+- 크기: 원본과 동일 w, **추정 높이**(줄 수·폰트 기반, cy=0 금지 — 선처럼 보이는 문제 방지), spAutoFit
 - 배경: 없음 (투명)
 - 폰트: sz=원본동일, lang=vi-VN, color=0033CC
-- 영역 판별: `overlapsScreenContent` (파서와 동일)
+- 영역 판별: `overlapsScreenContent` + 좌측 상단 부제목 밴드
+- **반복 제목**: 동일 원문이 여러 슬라이드에 있으면 **첫 등장 슬라이드**의 번역문을 공통 적용 (부분일치 fuzzy 매칭 사용 안 함)
 
 ## Claude API 호출 방식
 Supabase Edge Function에서 처리 (API 키 서버사이드 보관)

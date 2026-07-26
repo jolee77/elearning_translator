@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { SLIDE_TYPE_LABELS, formatNarration, formatScreenText } from './pptxParser'
 import { getLangConfig, NARRATION_FIELD_KEY } from './lang'
 import { fieldKeyLabel, isTranslationFieldExcluded } from './slideFields'
@@ -32,6 +33,17 @@ export function downloadExtractionXlsx(slides: Slide[], filename: string): void 
   }))
 
   const worksheet = XLSX.utils.json_to_sheet(rows)
+  worksheet['!cols'] = [
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 48 },
+    { wch: 48 },
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 12 },
+  ]
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, '추출결과')
   XLSX.writeFile(workbook, filename)
@@ -201,34 +213,116 @@ function buildChangeLogRows(changeLogs: ChangeLog[], actors: XlsxActorContext): 
   return rows
 }
 
-function rowsToSheet(rows: SheetRow[]): XLSX.WorkSheet {
-  return XLSX.utils.aoa_to_sheet(rows)
+/** A4 가로 한 페이지 너비에 맞춘 열 너비 (약 100~110자폭) */
+const KO_VI_COL_WIDTHS = [8, 12, 42, 42]
+const KO_ONLY_COL_WIDTHS = [8, 12, 70]
+const CHANGE_COL_WIDTHS = [16, 28, 16, 22]
+
+const HEADER_FILL: ExcelJS.Fill = {
+  type: 'pattern',
+  pattern: 'solid',
+  fgColor: { argb: 'FF162B52' },
+}
+const HEADER_FONT: Partial<ExcelJS.Font> = {
+  bold: true,
+  color: { argb: 'FFFFFFFF' },
+  size: 11,
+  name: 'Malgun Gothic',
+}
+const BODY_FONT: Partial<ExcelJS.Font> = {
+  size: 10,
+  name: 'Malgun Gothic',
+}
+const WRAP_ALIGN: Partial<ExcelJS.Alignment> = {
+  wrapText: true,
+  vertical: 'top',
 }
 
-function workbookToBlob(workbook: XLSX.WorkBook): Blob {
-  const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
-  return new Blob([buffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+function applyA4LandscapePage(ws: ExcelJS.Worksheet): void {
+  ws.pageSetup = {
+    paperSize: 9, // A4
+    orientation: 'landscape',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    horizontalCentered: true,
+    margins: {
+      left: 0.4,
+      right: 0.4,
+      top: 0.5,
+      bottom: 0.5,
+      header: 0.2,
+      footer: 0.2,
+    },
+  }
+  ws.properties.defaultRowHeight = 18
+}
+
+function writeRowsToSheet(
+  ws: ExcelJS.Worksheet,
+  rows: SheetRow[],
+  colWidths: number[],
+  wrapTextCols: number[],
+): void {
+  colWidths.forEach((wch, i) => {
+    ws.getColumn(i + 1).width = wch
   })
+
+  rows.forEach((row, rowIdx) => {
+    const excelRow = ws.getRow(rowIdx + 1)
+    row.forEach((value, colIdx) => {
+      const cell = excelRow.getCell(colIdx + 1)
+      cell.value = value
+      cell.font = rowIdx === 0 ? HEADER_FONT : BODY_FONT
+      if (rowIdx === 0) {
+        cell.fill = HEADER_FILL
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+      } else if (wrapTextCols.includes(colIdx)) {
+        cell.alignment = WRAP_ALIGN
+      } else {
+        cell.alignment = { vertical: 'top' }
+      }
+    })
+
+    if (rowIdx === 0) {
+      excelRow.height = 22
+    } else {
+      const textCols = wrapTextCols.map((i) => String(row[i] ?? ''))
+      const maxLen = Math.max(0, ...textCols.map((t) => t.length))
+      const approxLines = Math.max(1, Math.ceil(maxLen / 36), ...textCols.map((t) => t.split('\n').length))
+      excelRow.height = Math.min(120, Math.max(18, approxLines * 15))
+    }
+  })
+
+  applyA4LandscapePage(ws)
 }
 
-export function generateTranslationXlsx(
+export async function generateTranslationXlsx(
   project: Project,
   slides: Slide[],
   translations: Translation[],
   changeLogs: ChangeLog[],
   actors: XlsxActorContext = { profileNames: {} },
-): Blob {
-  const workbook = XLSX.utils.book_new()
+): Promise<Blob> {
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = 'elearning-translator'
   const targetLangName = getLangConfig(project.target_lang).name
 
   const koViRows = buildTranslationRows(slides, translations, true, targetLangName)
   const koOnlyRows = buildTranslationRows(slides, translations, false, targetLangName)
   const changeRows = buildChangeLogRows(changeLogs, actors)
 
-  XLSX.utils.book_append_sheet(workbook, rowsToSheet(koViRows), '국문-목적언어')
-  XLSX.utils.book_append_sheet(workbook, rowsToSheet(koOnlyRows), '국문')
-  XLSX.utils.book_append_sheet(workbook, rowsToSheet(changeRows), '변경이력')
+  const koViSheet = workbook.addWorksheet('국문-목적언어')
+  writeRowsToSheet(koViSheet, koViRows, KO_VI_COL_WIDTHS, [2, 3])
 
-  return workbookToBlob(workbook)
+  const koSheet = workbook.addWorksheet('국문')
+  writeRowsToSheet(koSheet, koOnlyRows, KO_ONLY_COL_WIDTHS, [2])
+
+  const changeSheet = workbook.addWorksheet('변경이력')
+  writeRowsToSheet(changeSheet, changeRows, CHANGE_COL_WIDTHS, [1])
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  return new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
 }

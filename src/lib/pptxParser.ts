@@ -55,7 +55,7 @@ function attrInt(el: Element | null, localName: string): number {
   return val ? parseInt(val, 10) : 0
 }
 
-/** 단락 내 텍스트 run·줄바꿈(<a:br/>) 순서를 유지해 추출 */
+/** 단락 내 텍스트 run·줄바꿈(<a:br/>) 순서를 유지해 추출 (중첩 래퍼·괄호 영문 run 포함) */
 function extractParagraphText(p: Element): string {
   const parts: string[] = []
 
@@ -66,11 +66,8 @@ function extractParagraphText(p: Element): string {
         parts.push(child.textContent ?? '')
       } else if (child.localName === 'br') {
         parts.push('\n')
-      } else if (
-        child.localName === 'r' ||
-        child.localName === 'fld' ||
-        child.localName === 'hyperlink'
-      ) {
+      } else {
+        // r / fld / hyperlink 외 래퍼에도 영문·괄호 run이 있을 수 있음
         walk(child)
       }
     }
@@ -391,6 +388,21 @@ function isChapterName(x: number, y: number, _w: number, _h: number): boolean {
   return x / SB_CX > 0.1 && x / SB_CX < 0.35 && y / SB_CY >= 0.08 && y / SB_CY < 0.15
 }
 
+/**
+ * 화면 좌측 상단 부제목 밴드.
+ * 과정명 아래·본문 위. 줄바꿈으로 높이가 커져도(괄호 영문 + 이어지는 한글) 포함.
+ */
+function isSubtitleBand(x: number, y: number, w: number, h: number): boolean {
+  const xR = x / SB_CX
+  const yR = y / SB_CY
+  const yBottom = (y + Math.max(h, 1)) / SB_CY
+  const xRight = (x + Math.max(w, 1)) / SB_CX
+  if (isCourseName(x, y, w, h)) return false
+  // 좌측~중앙 상단. 목차(메뉴) 전체가 좌측 25% 안에만 있는 경우는 제외
+  if (xRight <= 0.25 && yR >= 0.08 && yBottom <= 0.78) return false
+  return xR > 0.08 && xR < 0.5 && yR >= 0.07 && yR < 0.2 && yBottom <= 0.28
+}
+
 /** 좌측 목차: 박스 전체가 좌측 25% 안에 있을 때만 */
 function isMenu(x: number, y: number, w: number, h: number): boolean {
   const xRight = (x + w) / SB_CX
@@ -518,6 +530,9 @@ function classifyShapeRegion(x: number, y: number, w: number, h: number): ShapeR
   const headerR = shapeRegionOverlapRatio(x, y, w, h, HEADER_REGION)
   const narrR = narrationOverlapRatio(x, y, w, h)
   const { cx, cy } = shapeCenterRatio(x, y, w, h)
+
+  // 좌측 상단 부제목은 header chrome이 아니라 화면텍스트로 추출·번역
+  if (isSubtitleBand(x, y, w, h) || isChapterName(x, y, w, h)) return 'screen'
 
   if (headerR > REGION_THRESHOLD && headerR >= screenR) return 'header'
 
@@ -775,6 +790,15 @@ export function isSyncMarkerOnly(text: string): boolean {
 function isLayoutChrome(s: RawShape): boolean {
   const region = classifyShapeRegion(s.x, s.y, s.w, s.h)
 
+  // 부제목(chapter) 밴드는 화면텍스트로 유지 — isChapterName으로 제외하지 않음
+  if (isSubtitleBand(s.x, s.y, s.w, s.h) || isChapterName(s.x, s.y, s.w, s.h)) {
+    return (
+      isScreenNumText(s.text) ||
+      isSyncMarkerOnly(s.text) ||
+      isNonTranslatableMetadata(s.text)
+    )
+  }
+
   return (
     region === 'header' ||
     region === 'desc' ||
@@ -782,7 +806,6 @@ function isLayoutChrome(s: RawShape): boolean {
     isMenu(s.x, s.y, s.w, s.h) ||
     overlapsRegionAtThreshold(s.x, s.y, s.w, s.h, SCREEN_NUM_REGION) ||
     isCourseName(s.x, s.y, s.w, s.h) ||
-    isChapterName(s.x, s.y, s.w, s.h) ||
     isScreenNumText(s.text) ||
     isSyncMarkerOnly(s.text) ||
     isNonTranslatableMetadata(s.text)
@@ -871,16 +894,24 @@ function parseSlideWithShapes(
   const cnShapes = screenNumShapes.filter((s) => isCourseName(s.x, s.y, s.w, s.h))
   const chShapes = screenNumShapes.filter((s) => isChapterName(s.x, s.y, s.w, s.h))
 
+  // 줄바꿈된 부제목(예: 자막(Subtitles)\n의 정의 및 특징)은 첫 줄만 자르지 않고 공백으로 연결
+  const flattenShapeText = (text: string) =>
+    text
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(' ')
+
   const courseName =
     cnShapes
-      .map((s) => s.text.split('\n')[0] ?? '')
+      .map((s) => flattenShapeText(s.text))
       .join(' ')
       .trim() || null
 
   const chapterName =
     chShapes
       .filter((s) => !cnShapes.includes(s))
-      .map((s) => s.text.split('\n')[0] ?? '')
+      .map((s) => flattenShapeText(s.text))
       .join(' ')
       .trim() || null
 
