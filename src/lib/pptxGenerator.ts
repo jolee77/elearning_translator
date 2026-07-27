@@ -462,6 +462,20 @@ function estimateOverlayHeight(viText: string, fontSz: number, boxW: number): nu
   return Math.max(emuPerLine + 20_000, totalLines * emuPerLine + 40_000)
 }
 
+/** 한 줄 표시용 가로 폭(EMU) — 베트남어 라틴 문자 폭 여유 포함 */
+function estimateSingleLineWidth(text: string, fontSz: number): number {
+  const pt = Math.max(fontSz / 100, 8)
+  const avgCharEmu = Math.round(pt * 12_700 * 0.62)
+  const compact = text.replace(/\s*\n\s*/g, ' ').trim()
+  return Math.max(200_000, compact.length * avgCharEmu + 60_000)
+}
+
+function estimateSingleLineHeight(fontSz: number): number {
+  const pt = Math.max(fontSz / 100, 8)
+  const emuPerLine = Math.round(pt * 12_700 * 1.45)
+  return emuPerLine + 40_000
+}
+
 function buildScreenOverlaySpXml(
   shapeId: number,
   x: number,
@@ -470,6 +484,7 @@ function buildScreenOverlaySpXml(
   h: number,
   viText: string,
   fontSz: number,
+  wrap: 'square' | 'none' = 'square',
 ): string {
   const textParagraphs = viText
     .split('\n')
@@ -491,7 +506,7 @@ function buildScreenOverlaySpXml(
     <a:noFill/>
   </p:spPr>
   <p:txBody>
-    <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0"><a:spAutoFit/></a:bodyPr>
+    <a:bodyPr wrap="${wrap}" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0"><a:spAutoFit/></a:bodyPr>
     <a:lstStyle/>
     ${textParagraphs}
   </p:txBody>
@@ -577,8 +592,16 @@ function processSlideXml(
 
     const fontSz = info.fontSize ?? 1200
     const vi = tr.vi_text.trim()
-    const overlayW = Math.max(info.w, 200_000)
-    const overlayH = estimateOverlayHeight(vi, fontSz, overlayW)
+    // 원문이 한 줄이면 번역도 한 줄로 이어 표시 (원본 박스 너비에 맞춰 강제 줄바꿈하지 않음)
+    const sourceSingleLine = !/\n/.test(trimmed)
+    const displayVi = sourceSingleLine ? vi.replace(/\s*\n\s*/g, ' ').trim() : vi
+    const wrap = sourceSingleLine ? 'none' : 'square'
+    const overlayW = sourceSingleLine
+      ? Math.max(info.w, estimateSingleLineWidth(displayVi, fontSz))
+      : Math.max(info.w, 200_000)
+    const overlayH = sourceSingleLine
+      ? estimateSingleLineHeight(fontSz)
+      : estimateOverlayHeight(displayVi, fontSz, overlayW)
     const overlayY = info.y + Math.max(info.h, 1) + 30_000
     overlayXmls.push(
       buildScreenOverlaySpXml(
@@ -587,8 +610,9 @@ function processSlideXml(
         overlayY,
         overlayW,
         overlayH,
-        vi,
+        displayVi,
         fontSz,
+        wrap,
       ),
     )
   }
