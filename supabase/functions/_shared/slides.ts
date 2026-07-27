@@ -6,6 +6,9 @@ export interface SlideTextBox {
   w: number
   h: number
   font_size?: number
+  table_id?: string
+  table_row?: number
+  table_col?: number
 }
 
 export interface SlideRow {

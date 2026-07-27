@@ -78,6 +78,7 @@ npm run build
 
 ### 전문가 원문 참고
 - 「맞춤법 반영 원문 보기」팝업: 추출 좌표(x/y/w/h)로 텍스트 박스를 슬라이드 비율 캔버스에 배치
+- 박스 높이·글자 수에 맞춰 글자 크기를 줄여 잘림을 완화. PPTX 표(`tbl`)는 셀 좌표·표 형태로 표시
 - 「원본 PPTX 다운로드」: 토큰 검증 후 Storage signed URL (`expert-source-pptx`) — 레이아웃 참고용
 
 ### 역번역 issues 표기

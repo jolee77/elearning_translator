@@ -24,6 +24,113 @@ interface RawShape {
   w: number
   h: number
   fontSize?: number
+  tableId?: string
+  tableRow?: number
+  tableCol?: number
+}
+
+function directChildrenByLocalName(parent: Element, localName: string): Element[] {
+  return Array.from(parent.children).filter(
+    (c): c is Element => c instanceof Element && c.localName === localName,
+  )
+}
+
+function cellGridSpan(tc: Element): number {
+  const tcPr = firstChildByLocalName(tc, 'tcPr')
+  if (!tcPr) return 1
+  const spanEl = firstChildByLocalName(tcPr, 'gridSpan')
+  const val = spanEl?.getAttribute('val')
+  const n = val ? parseInt(val, 10) : 1
+  return Number.isFinite(n) && n > 1 ? n : 1
+}
+
+function cellIsHMerge(tc: Element): boolean {
+  const tcPr = firstChildByLocalName(tc, 'tcPr')
+  if (!tcPr) return false
+  return Boolean(firstChildByLocalName(tcPr, 'hMerge'))
+}
+
+/**
+ * graphicFrame 표의 각 셀에 개별 좌표를 부여한다.
+ * (이전에는 표 전체 xfrm을 모든 셀에 복제해 미리보기에서 겹침)
+ */
+function pushTableShapes(
+  shapes: RawShape[],
+  graphicFrame: Element,
+  ctx: CoordCtx,
+  tableId: string,
+): void {
+  const table = firstChildByLocalName(graphicFrame, 'tbl')
+  if (!table) return
+
+  const local = getShapeTransform(graphicFrame)
+  const abs = toSlideCoords(local.x, local.y, local.w, local.h, ctx)
+  if (abs.w <= 0 || abs.h <= 0) return
+
+  const tblGrid = firstChildByLocalName(table, 'tblGrid')
+  const gridCols = tblGrid ? directChildrenByLocalName(tblGrid, 'gridCol') : []
+  let colWidths = gridCols.map((c) => attrInt(c, 'w'))
+  const colSum = colWidths.reduce((a, b) => a + b, 0)
+  if (colWidths.length === 0 || colSum <= 0) {
+    const rowsProbe = directChildrenByLocalName(table, 'tr')
+    const maxCols = Math.max(
+      1,
+      ...rowsProbe.map((r) => directChildrenByLocalName(r, 'tc').length),
+    )
+    colWidths = Array.from({ length: maxCols }, () => abs.w / maxCols)
+  } else {
+    const scale = abs.w / colSum
+    colWidths = colWidths.map((w) => w * scale)
+  }
+
+  const rows = directChildrenByLocalName(table, 'tr')
+  if (rows.length === 0) return
+
+  const rawRowHs = rows.map((r) => attrInt(r, 'h'))
+  const rowHSum = rawRowHs.reduce((a, b) => a + b, 0)
+  const rowHeights =
+    rowHSum > 0
+      ? rawRowHs.map((h) => (h > 0 ? (h / rowHSum) * abs.h : abs.h / rows.length))
+      : rawRowHs.map(() => abs.h / rows.length)
+
+  let yOff = 0
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r]
+    const rowH = rowHeights[r] ?? abs.h / rows.length
+    const cells = directChildrenByLocalName(row, 'tc')
+    let colIndex = 0
+    let xOff = 0
+
+    for (const tc of cells) {
+      const span = cellGridSpan(tc)
+      let cellW = 0
+      for (let s = 0; s < span; s++) {
+        cellW += colWidths[colIndex + s] ?? 0
+      }
+
+      if (!cellIsHMerge(tc)) {
+        const txBody = firstChildByLocalName(tc, 'txBody')
+        const text = txBody ? extractBodyText(txBody) : ''
+        if (text) {
+          shapes.push({
+            text,
+            x: abs.x + xOff,
+            y: abs.y + yOff,
+            w: Math.max(cellW, 1),
+            h: Math.max(rowH, 1),
+            fontSize: txBody ? extractFontSize(txBody) : undefined,
+            tableId,
+            tableRow: r,
+            tableCol: colIndex,
+          })
+        }
+      }
+
+      xOff += cellW
+      colIndex += span
+    }
+    yOff += rowH
+  }
 }
 
 function elementsByLocalName(root: Element, localName: string): Element[] {
@@ -188,6 +295,7 @@ function pushTextShape(
 /** grpSp chOff/chExt·중첩 그룹 변환 반영하여 spTree 하위 텍스트 도형 수집 */
 function collectRawShapes(parent: Element, ctx: CoordCtx = ROOT_CTX): RawShape[] {
   const shapes: RawShape[] = []
+  let tableSeq = 0
 
   const walk = (node: Element, currentCtx: CoordCtx) => {
     for (const child of Array.from(node.children)) {
@@ -203,17 +311,8 @@ function collectRawShapes(parent: Element, ctx: CoordCtx = ROOT_CTX): RawShape[]
           walk(child, currentCtx)
           continue
         }
-
-        const local = getShapeTransform(child)
-        const abs = toSlideCoords(local.x, local.y, local.w, local.h, currentCtx)
-
-        for (const tc of elementsByLocalName(table, 'tc')) {
-          const txBody = firstChildByLocalName(tc, 'txBody')
-          if (!txBody) continue
-          const text = extractBodyText(txBody)
-          if (!text) continue
-          shapes.push({ text, ...abs })
-        }
+        tableSeq += 1
+        pushTableShapes(shapes, child, currentCtx, `t${tableSeq}`)
       } else {
         walk(child, currentCtx)
       }
@@ -866,7 +965,7 @@ function isScreenTextExcluded(s: RawShape): boolean {
 }
 
 function rawShapeToBox(s: RawShape, index: number): SlideTextBox {
-  return {
+  const box: SlideTextBox = {
     id: String(index),
     text: s.text,
     x: s.x,
@@ -875,6 +974,12 @@ function rawShapeToBox(s: RawShape, index: number): SlideTextBox {
     h: s.h,
     font_size: s.fontSize,
   }
+  if (s.tableId) {
+    box.table_id = s.tableId
+    box.table_row = s.tableRow
+    box.table_col = s.tableCol
+  }
+  return box
 }
 
 function screenTextMatchKey(text: string): string {

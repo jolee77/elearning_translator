@@ -149,6 +149,7 @@ desc/image_num은 screen과 영역이 겹침. **도형 중심이 화면 밴드(x
 - 나레이션: 스크립트 밴드(싱크 마커)와 하단 밴드가 동시에 잡히면 **단일 박스만 선택** (`selectPrimaryNarrationShape`), 줄 단위는 `#` 제거 후 중복 제거
 - **싱크 마커**: 나레이션 `#1` `#2` 유지, `‹#›`·`<#>`·단독 `#` 제외 (`isBareSyncMarker`)
 - 화면텍스트: `#N` 단독 박스·화면번호 패턴·게티/URL 메타데이터 제외
+- **표(`graphicFrame`/`tbl`)**: 셀별 x/y/w/h + `table_id`/`table_row`/`table_col` 저장 (표 전체 xfrm을 셀에 복제하지 않음). 전문가 원문 미리보기에서 표 UI로 표시
 
 ### 슬라이드 타입 (번호가 아닌 패턴)
 intro / divider / outro / quiz / apply / lesson / content — ~~slideNum≤9 guide~~ **폐지**
@@ -266,6 +267,7 @@ const KO_CPM = 320
 ## 구현 현황 (2026-07-27)
 
 ### 완료
+- [x] 전문가 원문 미리보기: 박스 높이·글자수에 맞춘 글자 축소, PPTX 표 셀 좌표·표 UI 표시 (구버전 동일좌표 셀도 표로 복원)
 - [x] 전문가 검증: 맞춤법 반영 원문 팝업(좌표 기반 슬라이드 배치) + 원본 PPTX 토큰 기반 다운로드 (`expert-source-pptx`)
 - [x] VN PPTX: 그룹(grpSp) 텍스트도 절대 좌표·좌측/하단 정렬, 오버레이를 spTree 최상위에 배치
 - [x] 전문가 검증 재개 — 재추출 시 완료 링크 삭제, Step5 새 링크 생성, done 리뷰 항목 자동 삽입 금지

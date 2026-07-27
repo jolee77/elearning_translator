@@ -59,6 +59,10 @@ export interface SlideTextBox {
   w: number
   h: number
   font_size?: number
+  /** PPTX 표(graphicFrame/tbl)에서 추출된 셀이면 동일 표 id */
+  table_id?: string
+  table_row?: number
+  table_col?: number
 }
 
 // ─── DB 테이블 ──────────────────────────────────────────────────────────────

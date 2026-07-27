@@ -24,6 +24,19 @@ type PreviewBox = SlideTextBox & {
   highlighted: boolean
 }
 
+type PreviewUnit =
+  | { type: 'box'; box: PreviewBox }
+  | {
+      type: 'table'
+      tableId: string
+      boxes: PreviewBox[]
+      x: number
+      y: number
+      w: number
+      h: number
+      highlighted: boolean
+    }
+
 function isNarrationField(field: string | null | undefined): boolean {
   return field === 'tr_narration' || field === 'narration'
 }
@@ -40,13 +53,32 @@ function hasGeometry(box: SlideTextBox): boolean {
   return box.w > 0 && box.h > 0
 }
 
+/** font_size는 파서에서 pt로 저장됨. 박스 면적·줄 수에 맞춰 축소해 잘림을 줄인다. */
 function boxFontSizePx(box: SlideTextBox): number {
-  // OOXML sz는 1/100 pt. 미리보기 캔버스 기준으로 대략 환산
-  if (box.font_size && box.font_size > 0) {
-    return Math.max(9, Math.min(20, box.font_size / 100))
-  }
-  const hRatio = Math.max(box.h, 1) / SB_CY
-  return Math.max(9, Math.min(16, hRatio * 420))
+  const hFrac = Math.max(box.h, 1) / SB_CY
+  const wFrac = Math.max(box.w, 1) / SB_CX
+  const text = String(box.text ?? '')
+  const lines = text.split(/\r?\n/)
+  const lineCount = Math.max(1, lines.length)
+  const longest = Math.max(1, ...lines.map((l) => l.trim().length || 1))
+  // 슬라이드 폭 기준 대략 문자 수 (미리보기 ~900px 가정)
+  const charsPerLine = Math.max(6, wFrac * 88)
+  const wrappedLines = lines.reduce(
+    (sum, line) => sum + Math.max(1, Math.ceil((line.trim().length || 1) / charsPerLine)),
+    0,
+  )
+  const estLines = Math.max(lineCount, wrappedLines)
+
+  const fromHeight = (hFrac * 520) / (estLines * 1.35)
+  const fromWidth = (wFrac * 900) / Math.max(longest * 0.62, 1)
+  const fromSource =
+    box.font_size && box.font_size > 0
+      ? box.font_size > 40
+        ? box.font_size / 100
+        : box.font_size * 0.72
+      : fromHeight
+
+  return Math.max(6.5, Math.min(12, fromHeight, fromWidth, fromSource))
 }
 
 /** 원문에 명시적 줄바꿈이 없으면 한 줄로 표시 (박스 폭 안에서) */
@@ -69,8 +101,6 @@ type PreviewLayout = {
  * 나레이션만 하단 밴드로 두고 화면 폭에 맞춰 줄바꿈.
  */
 function resolvePreviewLayout(box: PreviewBox): PreviewLayout {
-  const singleLine = !hasExplicitLineBreak(box.text)
-
   if (box.kind === 'narration') {
     return {
       leftPct: 1,
@@ -82,6 +112,12 @@ function resolvePreviewLayout(box: PreviewBox): PreviewLayout {
     }
   }
 
+  const wFrac = Math.max(box.w, 1) / SB_CX
+  const charsPerLine = Math.max(6, wFrac * 88)
+  // 폭에 비해 긴 한 줄은 줄바꿈해 잘림을 줄임
+  const singleLine =
+    !hasExplicitLineBreak(box.text) && box.text.trim().length <= charsPerLine * 1.1
+
   return {
     leftPct: (box.x / SB_CX) * 100,
     topPct: (box.y / SB_CY) * 100,
@@ -90,6 +126,110 @@ function resolvePreviewLayout(box: PreviewBox): PreviewLayout {
     heightPct: (Math.max(box.h, 1) / SB_CY) * 100,
     singleLine,
   }
+}
+
+function geomKey(box: SlideTextBox): string {
+  const q = (n: number) => Math.round(n / 5000) * 5000
+  return `${q(box.x)}:${q(box.y)}:${q(box.w)}:${q(box.h)}`
+}
+
+/**
+ * table_id가 있으면 표 단위로 묶고,
+ * 구버전 추출(표 셀이 동일 좌표)은 같은 geometry 그룹을 표로 복원한다.
+ */
+function buildPreviewUnits(boxes: PreviewBox[]): PreviewUnit[] {
+  const units: PreviewUnit[] = []
+  const used = new Set<string>()
+
+  const byTable = new Map<string, PreviewBox[]>()
+  for (const box of boxes) {
+    if (box.kind !== 'screen' || !box.table_id) continue
+    const list = byTable.get(box.table_id) ?? []
+    list.push(box)
+    byTable.set(box.table_id, list)
+  }
+
+  for (const [tableId, cells] of byTable) {
+    if (cells.length < 2) continue
+    for (const c of cells) used.add(previewBoxKey(c))
+    const x = Math.min(...cells.map((c) => c.x))
+    const y = Math.min(...cells.map((c) => c.y))
+    const x2 = Math.max(...cells.map((c) => c.x + Math.max(c.w, 1)))
+    const y2 = Math.max(...cells.map((c) => c.y + Math.max(c.h, 1)))
+    units.push({
+      type: 'table',
+      tableId,
+      boxes: cells,
+      x,
+      y,
+      w: Math.max(x2 - x, 1),
+      h: Math.max(y2 - y, 1),
+      highlighted: cells.some((c) => c.highlighted),
+    })
+  }
+
+  const byGeom = new Map<string, PreviewBox[]>()
+  for (const box of boxes) {
+    if (used.has(previewBoxKey(box)) || box.kind !== 'screen') continue
+    const key = geomKey(box)
+    const list = byGeom.get(key) ?? []
+    list.push(box)
+    byGeom.set(key, list)
+  }
+
+  for (const [key, group] of byGeom) {
+    if (group.length < 2) continue
+    // 동일 좌표에 겹친 셀만 표로 복원 (의도적으로 겹친 일반 도형은 드묾)
+    for (const c of group) used.add(previewBoxKey(c))
+    const x = group[0].x
+    const y = group[0].y
+    const w = Math.max(group[0].w, 1)
+    const h = Math.max(group[0].h, 1)
+    units.push({
+      type: 'table',
+      tableId: `geom-${key}`,
+      boxes: group,
+      x,
+      y,
+      w,
+      h,
+      highlighted: group.some((c) => c.highlighted),
+    })
+  }
+
+  for (const box of boxes) {
+    if (used.has(previewBoxKey(box))) continue
+    units.push({ type: 'box', box })
+  }
+
+  return units
+}
+
+function buildTableGrid(boxes: PreviewBox[]): PreviewBox[][] {
+  const hasCoords = boxes.every(
+    (b) => typeof b.table_row === 'number' && typeof b.table_col === 'number',
+  )
+
+  if (hasCoords) {
+    const rowMap = new Map<number, Map<number, PreviewBox>>()
+    for (const b of boxes) {
+      const r = b.table_row!
+      const c = b.table_col!
+      if (!rowMap.has(r)) rowMap.set(r, new Map())
+      rowMap.get(r)!.set(c, b)
+    }
+    const rows: PreviewBox[][] = []
+    const rowKeys = [...rowMap.keys()].sort((a, b) => a - b)
+    for (const r of rowKeys) {
+      const cols = rowMap.get(r)!
+      const colKeys = [...cols.keys()].sort((a, b) => a - b)
+      rows.push(colKeys.map((c) => cols.get(c)!))
+    }
+    return rows
+  }
+
+  // 구버전: 동일 프레임에 쌓인 셀 → 한 열 표로 표시 (읽기 순서)
+  return boxes.map((b) => [b])
 }
 
 function buildPreviewBoxes(
@@ -145,11 +285,82 @@ function buildPreviewBoxes(
   return { positioned, unpositioned }
 }
 
+function PreviewText({ box, singleLine }: { box: PreviewBox; singleLine: boolean }) {
+  return (
+    <p
+      className={`text-gray-900 ${
+        singleLine
+          ? 'overflow-hidden text-ellipsis whitespace-nowrap'
+          : 'whitespace-pre-wrap break-words'
+      }`}
+      style={{ fontSize: 'inherit', lineHeight: 'inherit' }}
+    >
+      {box.text}
+    </p>
+  )
+}
+
+function TablePreview({
+  unit,
+}: {
+  unit: Extract<PreviewUnit, { type: 'table' }>
+}) {
+  const grid = buildTableGrid(unit.boxes)
+  const fontPx = Math.min(...unit.boxes.map((b) => boxFontSizePx(b)), 10)
+
+  return (
+    <div
+      className={`absolute overflow-hidden rounded border ${
+        unit.highlighted
+          ? 'z-20 border-[#1E88E5] bg-[#e3f2fd] shadow-md ring-2 ring-[#1E88E5]'
+          : 'z-10 border-gray-500/80 bg-white/95'
+      }`}
+      style={{
+        left: `${(unit.x / SB_CX) * 100}%`,
+        top: `${(unit.y / SB_CY) * 100}%`,
+        width: `${(Math.max(unit.w, 1) / SB_CX) * 100}%`,
+        height: `${(Math.max(unit.h, 1) / SB_CY) * 100}%`,
+        fontSize: `${fontPx}px`,
+        lineHeight: 1.25,
+      }}
+      title={unit.boxes.map((b) => b.text).join(' | ')}
+    >
+      <table className="h-full w-full border-collapse table-fixed">
+        <tbody>
+          {grid.map((row, ri) => (
+            <tr key={`r-${ri}`}>
+              {row.map((cell) => (
+                <td
+                  key={previewBoxKey(cell)}
+                  className={`align-top border border-gray-300/80 px-1 py-0.5 ${
+                    cell.highlighted ? 'bg-[#e3f2fd]' : 'bg-white/90'
+                  }`}
+                  style={{
+                    fontSize: `${boxFontSizePx(cell)}px`,
+                    width: `${100 / Math.max(row.length, 1)}%`,
+                  }}
+                >
+                  <PreviewText
+                    box={cell}
+                    singleLine={!hasExplicitLineBreak(cell.text) && cell.text.length < 28}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function SlideLayoutCanvas({
   boxes,
 }: {
   boxes: PreviewBox[]
 }) {
+  const units = useMemo(() => buildPreviewUnits(boxes), [boxes])
+
   return (
     <div
       className="relative w-full overflow-hidden rounded-lg border border-gray-300 bg-[#fafafa] shadow-inner"
@@ -165,22 +376,29 @@ function SlideLayoutCanvas({
         }}
       />
 
-      {boxes.map((box) => {
-        const key = previewBoxKey(box)
+      {units.map((unit) => {
+        if (unit.type === 'table') {
+          return <TablePreview key={`table-${unit.tableId}`} unit={unit} />
+        }
+
+        const box = unit.box
         const layout = resolvePreviewLayout(box)
         const isNarration = box.kind === 'narration'
+        const fontPx = isNarration
+          ? Math.max(7, Math.min(11, boxFontSizePx(box)))
+          : boxFontSizePx(box)
 
         return (
           <div
-            key={key}
-            className={`absolute rounded border px-1 py-0.5 ${
+            key={previewBoxKey(box)}
+            className={`absolute rounded border px-0.5 py-0 ${
               isNarration ? 'overflow-visible' : 'overflow-hidden'
             } ${
               box.highlighted
-                ? 'z-20 border-[#1E88E5] bg-[#e3f2fd] shadow-md ring-2 ring-[#1E88E5]'
+                ? 'z-20 border-[#1E88E5] bg-[#e3f2fd]/90 shadow-md ring-2 ring-[#1E88E5]'
                 : isNarration
-                  ? 'z-10 border-emerald-400/80 bg-[#e8f5e9]/95'
-                  : 'z-10 border-gray-400/70 bg-white/90'
+                  ? 'z-10 border-emerald-400/80 bg-[#e8f5e9]/90'
+                  : 'z-10 border-gray-400/70 bg-white/70'
             }`}
             style={{
               left: `${layout.leftPct}%`,
@@ -191,20 +409,12 @@ function SlideLayoutCanvas({
                 layout.heightPct === 'auto'
                   ? 'auto'
                   : `${Math.max(layout.heightPct, 1.2)}%`,
-              fontSize: `${boxFontSizePx(box)}px`,
-              lineHeight: 1.25,
+              fontSize: `${fontPx}px`,
+              lineHeight: 1.2,
             }}
             title={box.text}
           >
-            <p
-              className={`text-gray-900 ${
-                layout.singleLine
-                  ? 'overflow-hidden text-ellipsis whitespace-nowrap'
-                  : 'whitespace-pre-wrap break-words'
-              }`}
-            >
-              {box.text}
-            </p>
+            <PreviewText box={box} singleLine={layout.singleLine} />
           </div>
         )
       })}
@@ -317,8 +527,8 @@ export function ExpertSourcePreviewModal({
               맞춤법 반영 원문 (슬라이드 배치)
             </h2>
             <p className="mt-1 text-xs text-gray-500">
-              PPTX에서 추출한 좌표로 텍스트 박스 위치를 대략 재현합니다. 배경·이미지는 포함되지
-              않으며, ← → 키로 슬라이드를 이동할 수 있습니다.
+              PPTX에서 추출한 좌표로 텍스트 박스 위치를 대략 재현합니다. 표는 셀 단위로 묶어 표시합니다.
+              배경·이미지는 포함되지 않으며, ← → 키로 슬라이드를 이동할 수 있습니다.
             </p>
           </div>
           <button
@@ -402,6 +612,10 @@ export function ExpertSourcePreviewModal({
               <span className="inline-flex items-center gap-1">
                 <span className="inline-block h-3 w-3 rounded border border-[#1E88E5] bg-[#e3f2fd]" />
                 검토 중 항목
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded border border-gray-500 bg-white" />
+                표
               </span>
             </div>
 
