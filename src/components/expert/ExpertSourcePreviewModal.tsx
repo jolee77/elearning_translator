@@ -53,15 +53,14 @@ function hasGeometry(box: SlideTextBox): boolean {
   return box.w > 0 && box.h > 0
 }
 
-/** font_size는 파서에서 pt로 저장됨. 박스 면적·줄 수에 맞춰 축소해 잘림을 줄인다. */
-function boxFontSizePx(box: SlideTextBox): number {
+/** font_size는 파서에서 pt로 저장됨. */
+function boxFontSizePx(box: SlideTextBox, kind: 'screen' | 'narration' = 'screen'): number {
   const hFrac = Math.max(box.h, 1) / SB_CY
   const wFrac = Math.max(box.w, 1) / SB_CX
   const text = String(box.text ?? '')
   const lines = text.split(/\r?\n/)
   const lineCount = Math.max(1, lines.length)
   const longest = Math.max(1, ...lines.map((l) => l.trim().length || 1))
-  // 슬라이드 폭 기준 대략 문자 수 (미리보기 ~900px 가정)
   const charsPerLine = Math.max(6, wFrac * 88)
   const wrappedLines = lines.reduce(
     (sum, line) => sum + Math.max(1, Math.ceil((line.trim().length || 1) / charsPerLine)),
@@ -71,14 +70,17 @@ function boxFontSizePx(box: SlideTextBox): number {
 
   const fromHeight = (hFrac * 520) / (estLines * 1.35)
   const fromWidth = (wFrac * 900) / Math.max(longest * 0.62, 1)
-  const fromSource =
-    box.font_size && box.font_size > 0
-      ? box.font_size > 40
-        ? box.font_size / 100
-        : box.font_size * 0.72
-      : fromHeight
 
-  return Math.max(6.5, Math.min(12, fromHeight, fromWidth, fromSource))
+  if (box.font_size && box.font_size > 0) {
+    const pt =
+      box.font_size > 40 ? box.font_size / 100 : box.font_size
+    // 화면텍스트는 PPTX pt에 가깝게, 나레이션은 읽기 좋게 약간 축소
+    const px = kind === 'narration' ? pt * 0.92 : pt
+    return Math.max(kind === 'narration' ? 9 : 8, Math.min(kind === 'narration' ? 12 : 14, px))
+  }
+
+  const fallback = Math.max(6.5, Math.min(kind === 'narration' ? 11 : 12, fromHeight, fromWidth))
+  return fallback
 }
 
 /** 원문에 명시적 줄바꿈이 없으면 한 줄로 표시 (박스 폭 안에서) */
@@ -88,42 +90,22 @@ function hasExplicitLineBreak(text: string): boolean {
 
 type PreviewLayout = {
   leftPct: number
-  topPct: number | null
-  bottomPct: number | null
+  topPct: number
   widthPct: number
-  /** 화면텍스트는 PPTX 높이 유지. 나레이션은 텍스트에 맞춤 */
-  heightPct: number | 'auto'
   singleLine: boolean
 }
 
-/**
- * PPTX 좌표를 그대로 반영. 화면텍스트 위치/크기를 임의로 옮기거나 키우지 않음.
- * 나레이션만 하단 밴드로 두고 화면 폭에 맞춰 줄바꿈.
- */
+/** 화면텍스트: PPTX x/y/w 유지, 높이는 텍스트 분량에 맞춤 */
 function resolvePreviewLayout(box: PreviewBox): PreviewLayout {
-  if (box.kind === 'narration') {
-    return {
-      leftPct: 1,
-      topPct: null,
-      bottomPct: 1.5,
-      widthPct: 98,
-      heightPct: 'auto',
-      singleLine: false,
-    }
-  }
-
   const wFrac = Math.max(box.w, 1) / SB_CX
   const charsPerLine = Math.max(6, wFrac * 88)
-  // 폭에 비해 긴 한 줄은 줄바꿈해 잘림을 줄임
   const singleLine =
     !hasExplicitLineBreak(box.text) && box.text.trim().length <= charsPerLine * 1.1
 
   return {
     leftPct: (box.x / SB_CX) * 100,
     topPct: (box.y / SB_CY) * 100,
-    bottomPct: null,
     widthPct: (Math.max(box.w, 1) / SB_CX) * 100,
-    heightPct: (Math.max(box.h, 1) / SB_CY) * 100,
     singleLine,
   }
 }
@@ -300,13 +282,38 @@ function PreviewText({ box, singleLine }: { box: PreviewBox; singleLine: boolean
   )
 }
 
+function NarrationPanel({ boxes }: { boxes: PreviewBox[] }) {
+  if (boxes.length === 0) return null
+
+  return (
+    <div className="border-t border-emerald-400/80">
+      {boxes.map((box) => (
+        <div
+          key={previewBoxKey(box)}
+          className={`px-2 py-1.5 ${
+            box.highlighted
+              ? 'border-l-4 border-[#1E88E5] bg-[#e3f2fd]/90'
+              : 'bg-[#e8f5e9]/90'
+          }`}
+          style={{
+            fontSize: `${boxFontSizePx(box, 'narration')}px`,
+            lineHeight: 1.45,
+          }}
+        >
+          <p className="whitespace-pre-wrap break-words text-gray-900">{box.text}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function TablePreview({
   unit,
 }: {
   unit: Extract<PreviewUnit, { type: 'table' }>
 }) {
   const grid = buildTableGrid(unit.boxes)
-  const fontPx = Math.min(...unit.boxes.map((b) => boxFontSizePx(b)), 10)
+  const fontPx = Math.min(...unit.boxes.map((b) => boxFontSizePx(b, 'screen')), 10)
 
   return (
     <div
@@ -336,7 +343,7 @@ function TablePreview({
                     cell.highlighted ? 'bg-[#e3f2fd]' : 'bg-white/90'
                   }`}
                   style={{
-                    fontSize: `${boxFontSizePx(cell)}px`,
+                    fontSize: `${boxFontSizePx(cell, 'screen')}px`,
                     width: `${100 / Math.max(row.length, 1)}%`,
                   }}
                 >
@@ -359,71 +366,72 @@ function SlideLayoutCanvas({
 }: {
   boxes: PreviewBox[]
 }) {
-  const units = useMemo(() => buildPreviewUnits(boxes), [boxes])
+  const screenBoxes = useMemo(
+    () => boxes.filter((b) => b.kind === 'screen'),
+    [boxes],
+  )
+  const narrationBoxes = useMemo(
+    () => boxes.filter((b) => b.kind === 'narration'),
+    [boxes],
+  )
+  const units = useMemo(() => buildPreviewUnits(screenBoxes), [screenBoxes])
 
   return (
-    <div
-      className="relative w-full overflow-hidden rounded-lg border border-gray-300 bg-[#fafafa] shadow-inner"
-      style={{ aspectRatio: `${SB_CX} / ${SB_CY}` }}
-    >
-      {/* 약한 가이드 그리드 */}
+    <div className="overflow-hidden rounded-lg border border-gray-300 bg-[#fafafa] shadow-inner">
       <div
-        className="pointer-events-none absolute inset-0 opacity-40"
-        style={{
-          backgroundImage:
-            'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
-          backgroundSize: '10% 10%',
-        }}
-      />
+        className="relative w-full overflow-hidden"
+        style={{ aspectRatio: `${SB_CX} / ${SB_CY}` }}
+      >
+        {/* 약한 가이드 그리드 */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-40"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
+            backgroundSize: '10% 10%',
+          }}
+        />
 
-      {units.map((unit) => {
-        if (unit.type === 'table') {
-          return <TablePreview key={`table-${unit.tableId}`} unit={unit} />
-        }
+        {units.map((unit) => {
+          if (unit.type === 'table') {
+            return <TablePreview key={`table-${unit.tableId}`} unit={unit} />
+          }
 
-        const box = unit.box
-        const layout = resolvePreviewLayout(box)
-        const isNarration = box.kind === 'narration'
-        const fontPx = isNarration
-          ? Math.max(7, Math.min(11, boxFontSizePx(box)))
-          : boxFontSizePx(box)
+          const box = unit.box
+          const layout = resolvePreviewLayout(box)
+          const fontPx = boxFontSizePx(box, 'screen')
 
-        return (
-          <div
-            key={previewBoxKey(box)}
-            className={`absolute rounded border px-0.5 py-0 ${
-              isNarration ? 'overflow-visible' : 'overflow-hidden'
-            } ${
-              box.highlighted
-                ? 'z-20 border-[#1E88E5] bg-[#e3f2fd]/90 shadow-md ring-2 ring-[#1E88E5]'
-                : isNarration
-                  ? 'z-10 border-emerald-400/80 bg-[#e8f5e9]/90'
+          return (
+            <div
+              key={previewBoxKey(box)}
+              className={`absolute rounded border px-0.5 py-0 ${
+                box.highlighted
+                  ? 'z-20 border-[#1E88E5] bg-[#e3f2fd]/90 shadow-md ring-2 ring-[#1E88E5]'
                   : 'z-10 border-gray-400/70 bg-white/70'
-            }`}
-            style={{
-              left: `${layout.leftPct}%`,
-              top: layout.topPct != null ? `${layout.topPct}%` : 'auto',
-              bottom: layout.bottomPct != null ? `${layout.bottomPct}%` : 'auto',
-              width: `${Math.max(layout.widthPct, 1)}%`,
-              height:
-                layout.heightPct === 'auto'
-                  ? 'auto'
-                  : `${Math.max(layout.heightPct, 1.2)}%`,
-              fontSize: `${fontPx}px`,
-              lineHeight: 1.2,
-            }}
-            title={box.text}
-          >
-            <PreviewText box={box} singleLine={layout.singleLine} />
-          </div>
-        )
-      })}
+              }`}
+              style={{
+                left: `${layout.leftPct}%`,
+                top: `${layout.topPct}%`,
+                width: `${Math.max(layout.widthPct, 1)}%`,
+                height: 'auto',
+                fontSize: `${fontPx}px`,
+                lineHeight: 1.25,
+              }}
+              title={box.text}
+            >
+              <PreviewText box={box} singleLine={layout.singleLine} />
+            </div>
+          )
+        })}
 
-      {boxes.length === 0 && (
-        <p className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">
-          배치할 텍스트 박스가 없습니다
-        </p>
-      )}
+        {screenBoxes.length === 0 && narrationBoxes.length === 0 && (
+          <p className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">
+            배치할 텍스트 박스가 없습니다
+          </p>
+        )}
+      </div>
+
+      <NarrationPanel boxes={narrationBoxes} />
     </div>
   )
 }
