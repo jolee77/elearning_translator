@@ -74,13 +74,13 @@ function resolvePreviewLayout(box: PreviewBox): PreviewLayout {
   let bottomPct: number | null = null
   let widthPct: number | 'auto' = (Math.max(box.w, 1) / SB_CX) * 100
 
-  // 나레이션은 항상 하단에 붙임
+  // 나레이션: 하단 고정, 화면 폭에 맞춰 줄바꿈, 높이는 텍스트에 맞춤
   if (box.kind === 'narration') {
     leftPct = 1
     topPct = null
     bottomPct = 1.5
-    widthPct = singleLine ? 'auto' : 98
-    return { leftPct, topPct, bottomPct, widthPct, singleLine }
+    widthPct = 98
+    return { leftPct, topPct, bottomPct, widthPct, singleLine: false }
   }
 
   // 상단 부제목은 좌측에 붙임
