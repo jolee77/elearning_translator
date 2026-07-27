@@ -77,7 +77,7 @@ npm run build
 - `get_expert_review_by_token`: 완료(`done`) 리뷰에는 번역 항목 자동 삽입 안 함
 
 ### 전문가 원문 참고
-- 「맞춤법 반영 원문 보기」팝업: 슬라이드별 화면텍스트·나레이션(DB 맞춤법 반영본)
+- 「맞춤법 반영 원문 보기」팝업: 추출 좌표(x/y/w/h)로 텍스트 박스를 슬라이드 비율 캔버스에 배치
 - 「원본 PPTX 다운로드」: 토큰 검증 후 Storage signed URL (`expert-source-pptx`) — 레이아웃 참고용
 
 ### 역번역 issues 표기
