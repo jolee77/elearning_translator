@@ -45,6 +45,56 @@ function boxFontSizePx(box: SlideTextBox): number {
   return Math.max(9, Math.min(16, hRatio * 420))
 }
 
+/** 원문에 명시적 줄바꿈이 없으면 미리보기에서도 한 줄로 표시 */
+function hasExplicitLineBreak(text: string): boolean {
+  return /\r?\n/.test(text)
+}
+
+/** 좌측 상단 부제목 밴드 (미리보기 좌측 정렬용) */
+function isPreviewSubtitleBand(box: PreviewBox): boolean {
+  if (box.kind !== 'screen') return false
+  const xR = box.x / SB_CX
+  const yR = box.y / SB_CY
+  const yBottom = (box.y + Math.max(box.h, 1)) / SB_CY
+  return xR < 0.55 && yR >= 0.05 && yR < 0.22 && yBottom <= 0.3
+}
+
+type PreviewLayout = {
+  leftPct: number
+  topPct: number | null
+  bottomPct: number | null
+  widthPct: number | 'auto'
+  singleLine: boolean
+}
+
+function resolvePreviewLayout(box: PreviewBox): PreviewLayout {
+  const singleLine = !hasExplicitLineBreak(box.text)
+  let leftPct = (box.x / SB_CX) * 100
+  let topPct: number | null = (box.y / SB_CY) * 100
+  let bottomPct: number | null = null
+  let widthPct: number | 'auto' = (Math.max(box.w, 1) / SB_CX) * 100
+
+  // 나레이션은 항상 하단에 붙임
+  if (box.kind === 'narration') {
+    leftPct = 1
+    topPct = null
+    bottomPct = 1.5
+    widthPct = singleLine ? 'auto' : 98
+    return { leftPct, topPct, bottomPct, widthPct, singleLine }
+  }
+
+  // 상단 부제목은 좌측에 붙임
+  if (isPreviewSubtitleBand(box)) {
+    leftPct = 1
+  }
+
+  if (singleLine) {
+    widthPct = 'auto'
+  }
+
+  return { leftPct, topPct, bottomPct, widthPct, singleLine }
+}
+
 function buildPreviewBoxes(
   slide: ExpertReviewSlideInfo,
   highlightField: string | null | undefined,
@@ -119,16 +169,14 @@ function SlideLayoutCanvas({
       />
 
       {boxes.map((box) => {
-        const left = (box.x / SB_CX) * 100
-        const top = (box.y / SB_CY) * 100
-        const width = (Math.max(box.w, 1) / SB_CX) * 100
-        const height = (Math.max(box.h, 1) / SB_CY) * 100
+        const layout = resolvePreviewLayout(box)
         const isNarration = box.kind === 'narration'
+        const maxWidthPct = Math.max(4, 100 - layout.leftPct - 1)
 
         return (
           <div
             key={`${box.kind}-${box.id}-${box.fieldKey}`}
-            className={`absolute overflow-auto rounded border px-1 py-0.5 ${
+            className={`absolute overflow-visible rounded border px-1 py-0.5 ${
               box.highlighted
                 ? 'z-20 border-[#1E88E5] bg-[#e3f2fd] shadow-md ring-2 ring-[#1E88E5]'
                 : isNarration
@@ -136,17 +184,30 @@ function SlideLayoutCanvas({
                   : 'z-10 border-gray-400/70 bg-white/90'
             }`}
             style={{
-              left: `${left}%`,
-              top: `${top}%`,
-              width: `${Math.max(width, 4)}%`,
-              height: `${Math.max(height, 3)}%`,
-              minHeight: '1.1em',
+              left: `${layout.leftPct}%`,
+              top: layout.topPct != null ? `${layout.topPct}%` : 'auto',
+              bottom: layout.bottomPct != null ? `${layout.bottomPct}%` : 'auto',
+              width:
+                layout.widthPct === 'auto'
+                  ? 'auto'
+                  : `${Math.max(layout.widthPct, 4)}%`,
+              maxWidth: `${maxWidthPct}%`,
+              height: 'auto',
+              minHeight: '1.25em',
               fontSize: `${boxFontSizePx(box)}px`,
               lineHeight: 1.35,
             }}
             title={isNarration ? '나레이션' : '화면 텍스트'}
           >
-            <p className="whitespace-pre-wrap break-words text-gray-900">{box.text}</p>
+            <p
+              className={`text-gray-900 ${
+                layout.singleLine
+                  ? 'whitespace-nowrap'
+                  : 'whitespace-pre-wrap break-words'
+              }`}
+            >
+              {box.text}
+            </p>
           </div>
         )
       })}
