@@ -12,7 +12,8 @@ export function getPptxStoragePath(userId: string, projectId: string): string {
   return `${userId}/${projectId}/source.pptx`
 }
 
-async function clearProjectWorkflowData(projectId: string): Promise<void> {
+/** 전문가 검증 링크·항목 삭제 (재추출·파일 교체 시) */
+export async function clearExpertReviewsForProject(projectId: string): Promise<void> {
   const { data: reviews, error: reviewsQueryError } = await supabase
     .from('expert_reviews')
     .select('id')
@@ -29,13 +30,17 @@ async function clearProjectWorkflowData(projectId: string): Promise<void> {
     if (itemsError) throw itemsError
   }
 
-  const tables = [
-    'expert_reviews',
-    'verifications',
-    'translations',
-    'spelling_results',
-    'slides',
-  ] as const
+  const { error: reviewsError } = await supabase
+    .from('expert_reviews')
+    .delete()
+    .eq('project_id', projectId)
+  if (reviewsError) throw reviewsError
+}
+
+async function clearProjectWorkflowData(projectId: string): Promise<void> {
+  await clearExpertReviewsForProject(projectId)
+
+  const tables = ['verifications', 'translations', 'spelling_results', 'slides'] as const
 
   for (const table of tables) {
     const { error } = await supabase.from(table).delete().eq('project_id', projectId)

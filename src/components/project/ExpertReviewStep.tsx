@@ -33,9 +33,12 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
   const { data: slides = [] } = useSlides(project.id)
   const createReview = useCreateExpertReview()
 
-  // 진행 중 우선, 없으면 최신(완료 포함) — 완료 프로젝트 재진입 시 URL이 사라지지 않도록
-  const displayedReview = reviews.find((r) => r.status !== 'done') ?? reviews[0] ?? null
-  const reviewActive = displayedReview != null && displayedReview.status !== 'done'
+  // 진행 중 링크만 활성. 완료만 있으면 새 링크 생성 폼을 보여 재검증 가능하게 함
+  const activeReview = reviews.find((r) => r.status !== 'done') ?? null
+  const doneReviews = reviews.filter((r) => r.status === 'done')
+  const latestDoneReview = doneReviews[0] ?? null
+  const displayedReview = activeReview
+  const reviewActive = activeReview != null
   const {
     data: items = [],
     refetch: refetchItems,
@@ -48,11 +51,13 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
   const [reviewerEmail, setReviewerEmail] = useState('')
   const [memo, setMemo] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [showCreateForm, setShowCreateForm] = useState(false)
 
   const accessible = isStepAccessible(5, project.status)
-  const hasReview = displayedReview != null
-  const isReviewDone = displayedReview?.status === 'done'
+  const needsNewLink = !activeReview
+  const isCreating = needsNewLink || showCreateForm
   const reviewUrl = displayedReview ? getReviewUrl(displayedReview.token) : ''
+  const doneReviewUrl = latestDoneReview ? getReviewUrl(latestDoneReview.token) : ''
   const stats = getExpertReviewStats(items)
 
   const slideMap = useMemo(() => new Map(slides.map((s) => [s.id, s])), [slides])
@@ -89,15 +94,16 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
         reviewerEmail: reviewerEmail.trim(),
         memo: memo.trim(),
       })
-      showToast('검증 링크가 생성되었습니다.', 'success')
+      setShowCreateForm(false)
+      showToast('검증 링크가 생성되었습니다. 새 링크를 전문가에게 공유해 주세요.', 'success')
     } catch (err) {
       showToast(err instanceof Error ? err.message : '링크 생성에 실패했습니다.', 'error')
     }
   }
 
-  const handleCopyLink = async () => {
+  const handleCopyLink = async (url: string) => {
     try {
-      await navigator.clipboard.writeText(reviewUrl)
+      await navigator.clipboard.writeText(url)
       showToast('링크가 클립보드에 복사되었습니다.', 'success')
     } catch {
       showToast('클립보드 복사에 실패했습니다.', 'error')
@@ -125,6 +131,81 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
 
   const isBusy = createReview.isPending || isFetching || isFetchingItems
 
+  const createForm = (
+    <div className="nb-card nb-input-surface space-y-4 p-4">
+      {latestDoneReview && (
+        <div className="nb-alert nb-alert--warning text-sm">
+          이전 전문가 검증은 이미 완료되어 수정할 수 없습니다. 재추출·재번역 후에는{' '}
+          <strong>새 검증 링크</strong>를 만들어 전문가에게 다시 공유해 주세요.
+        </div>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label htmlFor="reviewer-name" className="nb-field-label">
+            전문가 이름
+          </label>
+          <input
+            id="reviewer-name"
+            type="text"
+            value={reviewerName}
+            onChange={(e) => setReviewerName(e.target.value)}
+            placeholder="홍길동"
+            className="nb-input mt-1 w-full"
+          />
+        </div>
+        <div>
+          <label htmlFor="reviewer-email" className="nb-field-label">
+            전문가 이메일
+          </label>
+          <input
+            id="reviewer-email"
+            type="email"
+            value={reviewerEmail}
+            onChange={(e) => setReviewerEmail(e.target.value)}
+            placeholder="expert@example.com"
+            className="nb-input mt-1 w-full"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor="reviewer-memo" className="nb-field-label">
+          메모 (전문가에게 전달할 내용)
+        </label>
+        <textarea
+          id="reviewer-memo"
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          rows={4}
+          placeholder="검증 시 참고할 사항을 입력하세요."
+          className="nb-textarea mt-1 w-full"
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={handleCreateLink}
+          disabled={isBusy || !accessible}
+          className="nb-btn-primary"
+        >
+          {createReview.isPending && <Spinner className="text-white" />}
+          {createReview.isPending ? '생성 중...' : '새 검증 링크 생성'}
+        </button>
+        {activeReview && showCreateForm && (
+          <button
+            type="button"
+            onClick={() => setShowCreateForm(false)}
+            disabled={isBusy}
+            className="nb-btn-secondary"
+          >
+            취소
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-4">
       <div className="nb-page-toolbar">
@@ -135,7 +216,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
             포함되지 않습니다.
           </p>
         </div>
-        {hasReview && (
+        {activeReview && (
           <button
             type="button"
             onClick={handleRefresh}
@@ -157,7 +238,28 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
           <Spinner className="text-gray-400" />
           <p className="text-sm text-gray-500">검증 정보를 불러오는 중...</p>
         </div>
-      ) : hasReview && displayedReview ? (
+      ) : isCreating ? (
+        <div className="space-y-4">
+          {createForm}
+          {latestDoneReview && (
+            <div className="nb-card px-4 py-3 text-sm text-gray-600">
+              <p className="font-medium text-gray-800">이전 완료 링크 (참고용·수정 불가)</p>
+              <p className="mt-1 break-all font-mono text-xs text-gray-500">{doneReviewUrl}</p>
+              <p className="mt-1 text-xs">
+                전문가: {latestDoneReview.expert_name}
+                {latestDoneReview.expert_email && ` (${latestDoneReview.expert_email})`}
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleCopyLink(doneReviewUrl)}
+                className="nb-btn-secondary mt-2 text-xs"
+              >
+                이전 링크 복사
+              </button>
+            </div>
+          )}
+        </div>
+      ) : displayedReview ? (
         <div className="space-y-4">
           <div className="nb-input-panel">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -171,9 +273,22 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
                   {displayedReview.expert_email && ` (${displayedReview.expert_email})`}
                 </p>
               </div>
-              <button type="button" onClick={handleCopyLink} className="nb-btn-primary">
-                클립보드 복사
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyLink(reviewUrl)}
+                  className="nb-btn-primary"
+                >
+                  클립보드 복사
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(true)}
+                  className="nb-btn-secondary"
+                >
+                  새 링크 만들기
+                </button>
+              </div>
             </div>
           </div>
 
@@ -181,7 +296,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium text-gray-800">
                 검토 상태:{' '}
-                <span style={{ color: isReviewDone ? '#389e0d' : '#1677ff' }}>
+                <span style={{ color: '#1677ff' }}>
                   {reviewStatusLabel(displayedReview.status)}
                 </span>
               </p>
@@ -202,8 +317,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
             )}
             {items.length === 0 && (
               <p className="mt-3 text-xs text-amber-700">
-                검토 항목이 없습니다. 재추출로 슬라이드가 바뀌면 항목이 삭제될 수 있습니다.
-                번역 데이터가 있으면 전문가 링크 접속 시 항목이 복구될 수 있습니다.
+                검토 항목이 없습니다. 번역이 준비되면 전문가가 링크에 접속할 때 항목이 생성됩니다.
               </p>
             )}
           </div>
@@ -313,60 +427,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
           )}
         </div>
       ) : (
-        <div className="nb-card nb-input-surface space-y-4 p-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor="reviewer-name" className="nb-field-label">
-                전문가 이름
-              </label>
-              <input
-                id="reviewer-name"
-                type="text"
-                value={reviewerName}
-                onChange={(e) => setReviewerName(e.target.value)}
-                placeholder="홍길동"
-                className="nb-input mt-1 w-full"
-              />
-            </div>
-            <div>
-              <label htmlFor="reviewer-email" className="nb-field-label">
-                전문가 이메일
-              </label>
-              <input
-                id="reviewer-email"
-                type="email"
-                value={reviewerEmail}
-                onChange={(e) => setReviewerEmail(e.target.value)}
-                placeholder="expert@example.com"
-                className="nb-input mt-1 w-full"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="reviewer-memo" className="nb-field-label">
-              메모 (전문가에게 전달할 내용)
-            </label>
-            <textarea
-              id="reviewer-memo"
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              rows={4}
-              placeholder="검증 시 참고할 사항을 입력하세요."
-              className="nb-textarea mt-1 w-full"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={handleCreateLink}
-            disabled={isBusy || !accessible}
-            className="nb-btn-primary"
-          >
-            {createReview.isPending && <Spinner className="text-white" />}
-            {createReview.isPending ? '생성 중...' : '검증 링크 생성'}
-          </button>
-        </div>
+        createForm
       )}
     </div>
   )

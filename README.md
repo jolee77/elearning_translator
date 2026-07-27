@@ -66,6 +66,11 @@ npm run build
 
 ## 최근 수정 (2026-07-27)
 
+### 전문가 검증 재개
+- 재추출 시 완료된 전문가 링크(`expert_reviews`)도 삭제 — 이전 URL이 「검증 완료」로 잠긴 채 남는 문제 해소
+- Step 5: 완료된 검증만 있을 때 **새 검증 링크 생성** 가능
+- `get_expert_review_by_token`: 완료(`done`) 리뷰에는 번역 항목 자동 삽입 안 함
+
 ### 역번역 issues 표기
 - UUID·필드키(`05d60a0e` 등) 대신 화면텍스트/나레이션 원문 인용으로 표시
 - `verify` Edge Function 프롬프트·저장 시 정제 + Step 4 화면에서도 기존 결과 치환

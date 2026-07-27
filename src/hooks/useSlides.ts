@@ -8,7 +8,7 @@ import {
 } from '../lib/pptxParser'
 import { supabase } from '../lib/supabase'
 import type { Slide } from '../types'
-import { STORAGE_BUCKET } from './useProject'
+import { STORAGE_BUCKET, clearExpertReviewsForProject } from './useProject'
 import { useAuth } from './useAuth'
 
 const slidesQueryKey = ['slides'] as const
@@ -130,8 +130,10 @@ export function useExtractSlides() {
       const parsed = await parsePptx(buffer, onProgress)
       const rows = toSlideRows(projectId, parsed)
 
+      // 전문가 검증 링크까지 삭제 (완료된 URL이 재번역 후에도 잠긴 채로 남는 문제 방지)
       // slides 삭제 시 translations / verifications / spelling_results / expert_review_items CASCADE
-      // expert_reviews(링크)는 이력으로 유지 — Step5에서 완료 링크를 계속 볼 수 있게 함
+      await clearExpertReviewsForProject(projectId)
+
       const { error: deleteError } = await supabase
         .from('slides')
         .delete()
@@ -159,6 +161,7 @@ export function useExtractSlides() {
       queryClient.invalidateQueries({ queryKey: ['verifications', variables.projectId] })
       queryClient.invalidateQueries({ queryKey: ['spelling', variables.projectId] })
       queryClient.invalidateQueries({ queryKey: ['expert_reviews', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: ['expert_review_items'] })
       queryClient.invalidateQueries({ queryKey: ['expert-reviews', variables.projectId] })
     },
   })

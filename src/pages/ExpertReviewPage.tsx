@@ -515,7 +515,10 @@ export function ExpertReviewPage() {
         {isReviewDone && (
           <div className="nb-alert nb-alert--success text-center">
             <p className="text-sm font-semibold">검증이 완료되었습니다.</p>
-            <p className="mt-1 text-xs">수고하셨습니다!</p>
+            <p className="mt-1 text-xs">
+              이 링크에서는 더 이상 수정할 수 없습니다. 재번역 후 재검증이 필요하면 설계담당자에게
+              새 검증 링크를 요청해 주세요.
+            </p>
           </div>
         )}
       </main>
