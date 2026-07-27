@@ -55,14 +55,20 @@ function attrInt(el: Element | null, localName: string): number {
   return val ? parseInt(val, 10) : 0
 }
 
-function getShapeTransform(shape: Element): { x: number; y: number; w: number; h: number } {
-  const xfrm =
+function getShapeXfrm(shape: Element): Element | null {
+  return (
     firstChildByLocalName(shape, 'xfrm') ??
     (() => {
       const spPr = firstChildByLocalName(shape, 'spPr')
-      return spPr ? firstChildByLocalName(spPr, 'xfrm') : null
+      if (spPr) return firstChildByLocalName(spPr, 'xfrm')
+      const grpSpPr = firstChildByLocalName(shape, 'grpSpPr')
+      return grpSpPr ? firstChildByLocalName(grpSpPr, 'xfrm') : null
     })()
+  )
+}
 
+function getShapeTransform(shape: Element): { x: number; y: number; w: number; h: number } {
+  const xfrm = getShapeXfrm(shape)
   const off = xfrm ? firstChildByLocalName(xfrm, 'off') : null
   const ext = xfrm ? firstChildByLocalName(xfrm, 'ext') : null
 
@@ -71,6 +77,51 @@ function getShapeTransform(shape: Element): { x: number; y: number; w: number; h
     y: attrInt(off, 'y'),
     w: attrInt(ext, 'cx'),
     h: attrInt(ext, 'cy'),
+  }
+}
+
+/** grpSp 자식 좌표계 → 슬라이드 EMU (pptxParser와 동일) */
+interface CoordCtx {
+  originX: number
+  originY: number
+  scaleX: number
+  scaleY: number
+}
+
+const ROOT_CTX: CoordCtx = { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }
+
+function groupChildCtx(grp: Element, parent: CoordCtx): CoordCtx {
+  const { x, y, w, h } = getShapeTransform(grp)
+  const xfrm = getShapeXfrm(grp)
+  const chOff = xfrm ? firstChildByLocalName(xfrm, 'chOff') : null
+  const chExt = xfrm ? firstChildByLocalName(xfrm, 'chExt') : null
+  const chOffX = attrInt(chOff, 'x')
+  const chOffY = attrInt(chOff, 'y')
+  const chExtW = attrInt(chExt, 'cx') || w || 1
+  const chExtH = attrInt(chExt, 'cy') || h || 1
+  const gScaleX = w / chExtW
+  const gScaleY = h / chExtH
+
+  return {
+    originX: parent.originX + parent.scaleX * (x - chOffX * gScaleX),
+    originY: parent.originY + parent.scaleY * (y - chOffY * gScaleY),
+    scaleX: parent.scaleX * gScaleX,
+    scaleY: parent.scaleY * gScaleY,
+  }
+}
+
+function toSlideCoords(
+  localX: number,
+  localY: number,
+  localW: number,
+  localH: number,
+  ctx: CoordCtx,
+): { x: number; y: number; w: number; h: number } {
+  return {
+    x: Math.round(ctx.originX + ctx.scaleX * localX),
+    y: Math.round(ctx.originY + ctx.scaleY * localY),
+    w: Math.round(localW * ctx.scaleX),
+    h: Math.round(localH * ctx.scaleY),
   }
 }
 
@@ -92,7 +143,11 @@ function extractFontSize(txBody: Element): number | undefined {
   return val ? parseInt(val, 10) : undefined
 }
 
-function collectTextShapes(parent: Element, offsetX = 0, offsetY = 0): TextShapeInfo[] {
+/**
+ * 그룹(grpSp) 여부와 무관하게 슬라이드 절대 좌표로 텍스트 도형 수집.
+ * 번역 오버레이는 이 좌표 기준 좌측 정렬·하단 배치 후 spTree 맨 위에 붙인다.
+ */
+function collectTextShapes(parent: Element, ctx: CoordCtx = ROOT_CTX): TextShapeInfo[] {
   const shapes: TextShapeInfo[] = []
 
   for (const child of Array.from(parent.children)) {
@@ -103,20 +158,17 @@ function collectTextShapes(parent: Element, offsetX = 0, offsetY = 0): TextShape
       if (!txBody) continue
 
       const text = extractBodyText(txBody)
-      const { x, y, w, h } = getShapeTransform(child)
+      const local = getShapeTransform(child)
+      const abs = toSlideCoords(local.x, local.y, local.w, local.h, ctx)
       shapes.push({
         parent,
         shape: child,
         text,
-        x: x + offsetX,
-        y: y + offsetY,
-        w,
-        h,
+        ...abs,
         fontSize: extractFontSize(txBody),
       })
     } else if (child.localName === 'grpSp') {
-      const { x, y } = getShapeTransform(child)
-      shapes.push(...collectTextShapes(child, offsetX + x, offsetY + y))
+      shapes.push(...collectTextShapes(child, groupChildCtx(child, ctx)))
     }
   }
 
@@ -446,21 +498,12 @@ function buildScreenOverlaySpXml(
 </p:sp>`
 }
 
-function insertShapeAfter(
-  doc: Document,
-  parent: Element,
-  reference: Element,
-  spXml: string,
-): void {
+function appendShapeToSpTree(doc: Document, spTree: Element, spXml: string): void {
   const parsed = new DOMParser().parseFromString(spXml, 'application/xml')
   const sp = parsed.documentElement
   const imported = doc.importNode(sp, true)
-
-  if (reference.nextSibling) {
-    parent.insertBefore(imported, reference.nextSibling)
-  } else {
-    parent.appendChild(imported)
-  }
+  // spTree 맨 끝 = 최상위 z-order (기존 도형·그룹에 가리지 않음)
+  spTree.appendChild(imported)
 }
 
 function isSubtitleLikeBox(x: number, y: number, w: number, h: number): boolean {
@@ -489,7 +532,7 @@ function processSlideXml(
   const usedTranslations = new Set<string>()
   let nextShapeId = getMaxShapeId(doc) + 1
 
-  const overlayInsertions: Array<{ parent: Element; shape: Element; xml: string }> = []
+  const overlayXmls: string[] = []
 
   // ── 나레이션: 단일 박스만 덮어쓰기 (라벨 없이 한글+베트남어) ──
   const primaryNarr = selectPrimaryNarrationShape(shapes)
@@ -516,7 +559,7 @@ function processSlideXml(
     }
   }
 
-  // ── 화면텍스트: 원본과 좌측(x) 정렬, 바로 하단에 VI 오버레이 ──
+  // ── 화면텍스트: 그룹 여부 무관, 원본과 좌측(x) 정렬·바로 하단 VI 오버레이 ──
   for (const info of shapes) {
     const trimmed = info.text.trim()
     if (!trimmed) continue
@@ -537,20 +580,22 @@ function processSlideXml(
     const overlayW = Math.max(info.w, 200_000)
     const overlayH = estimateOverlayHeight(vi, fontSz, overlayW)
     const overlayY = info.y + Math.max(info.h, 1) + 30_000
-    const spXml = buildScreenOverlaySpXml(
-      nextShapeId++,
-      info.x,
-      overlayY,
-      overlayW,
-      overlayH,
-      vi,
-      fontSz,
+    overlayXmls.push(
+      buildScreenOverlaySpXml(
+        nextShapeId++,
+        info.x,
+        overlayY,
+        overlayW,
+        overlayH,
+        vi,
+        fontSz,
+      ),
     )
-    overlayInsertions.push({ parent: info.parent, shape: info.shape, xml: spXml })
   }
 
-  for (const insertion of overlayInsertions) {
-    insertShapeAfter(doc, insertion.parent, insertion.shape, insertion.xml)
+  // 슬라이드 spTree 맨 위에 일괄 추가 (그룹 내부 삽입 금지 → 절대 좌표·최상위 표시)
+  for (const spXml of overlayXmls) {
+    appendShapeToSpTree(doc, spTree, spXml)
   }
 
   return new XMLSerializer().serializeToString(doc)
