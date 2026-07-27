@@ -262,6 +262,7 @@ const KO_CPM = 320
 ## 구현 현황 (2026-07-27)
 
 ### 완료
+- [x] 역번역 issues — UUID/필드키 대신 화면텍스트·나레이션 원문 인용 (`verify` + Step 4 표시)
 - [x] 맞춤법 최소 교정 — 문장·표현 재작성 금지, 오타·띄어쓰기만 (`spelling-check` 프롬프트 + `sanitizeSpellingField` 후처리)
 
 ## 구현 현황 (2026-07-16)

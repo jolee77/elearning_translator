@@ -8,6 +8,11 @@ import {
 import { callClaudeJson } from '../_shared/claude.ts'
 import { handleCors } from '../_shared/cors.ts'
 import { HttpError, chunk, errorResponse, jsonResponse, parseJsonBody } from '../_shared/http.ts'
+import {
+  buildVerifyItemLabel,
+  fieldTypeLabel,
+  sanitizeVerifyIssues,
+} from '../_shared/verifyIssues.ts'
 
 const BATCH_SIZE = 4
 
@@ -60,6 +65,7 @@ function mergeVerifyRows(
   projectId: string,
   batch: TranslationRow[],
   response: VerifyBatchResponse,
+  allItems: TranslationRow[],
 ): VerifyInsertRow[] {
   const rows: VerifyInsertRow[] = []
 
@@ -74,7 +80,7 @@ function mergeVerifyRows(
       translation_id: translation.id,
       back_translation: backTranslation,
       score: item?.similarity_score ?? null,
-      issues: item?.issues ?? null,
+      issues: sanitizeVerifyIssues(item?.issues ?? null, allItems),
       apply_status: 'pending',
     })
   }
@@ -87,18 +93,22 @@ const SYSTEM_PROMPT = `당신은 번역 품질 검증 전문가입니다.
 
 규칙:
 - 역번역은 자연스러운 한국어로 작성합니다.
-- 화면텍스트(screen_text)는 UI에 표시되는 짧은 문구이므로 간결하게 역번역합니다.
-- 나레이션(tr_narration)은 구두 발화에 맞게 자연스럽게 역번역합니다.
+- 화면텍스트는 UI에 표시되는 짧은 문구이므로 간결하게 역번역합니다.
+- 나레이션은 구두 발화에 맞게 자연스럽게 역번역합니다.
 - similarity_score는 0~100 정수 (100이 완벽 일치).
 - 의미 누락, 오역, 어색한 표현이 있으면 issues에 한국어로 설명합니다.
 - 문제가 없으면 issues는 null로 둡니다.
-- 입력의 모든 translation_id에 대해 results를 반드시 포함합니다.
+- issues·back_translation에 translation_id, UUID, field_key, 16진수 ID를 절대 쓰지 마세요.
+- 다른 항목을 언급할 때는 item_label 또는 한국어 원문(ko_text)을 「」로 인용하세요. (예: 화면텍스트 「11회차: 영상 자막…」)
+- 입력의 모든 translation_id에 대해 results를 반드시 포함합니다 (JSON 키 매칭용일 뿐, 설명 문구에는 쓰지 않음).
 - 반드시 요청된 JSON 형식만 출력합니다.`
 
 function buildVerifyPrompt(items: TranslationRow[]): string {
   const payload = items.map((item) => ({
     translation_id: item.id,
-    field_key: item.field,
+    field_type: item.field === 'tr_narration' || item.field === 'narration' ? 'narration' : 'screen_text',
+    field_label: fieldTypeLabel(item.field),
+    item_label: buildVerifyItemLabel(item.field, item.source),
     ko_text: item.source,
     translated_text: item.vi_text,
   }))
@@ -110,6 +120,7 @@ ${JSON.stringify(payload, null, 2)}
 
 각 항목에 대해 translated_text를 한국어로 역번역하고 ko_text와 비교하세요.
 입력에 포함된 모든 translation_id에 대해 results 항목을 빠짐없이 반환하세요.
+issues에는 ID 대신 item_label 또는 ko_text 인용만 사용하세요.
 
 다음 JSON 형식으로만 응답하세요:
 {
@@ -181,7 +192,7 @@ serve(async (req) => {
         buildVerifyPrompt(batch),
       )
 
-      rowsToInsert.push(...mergeVerifyRows(body.project_id, batch, response))
+      rowsToInsert.push(...mergeVerifyRows(body.project_id, batch, response, translationRows))
     }
 
     if (rowsToInsert.length === 0) {

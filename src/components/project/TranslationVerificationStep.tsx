@@ -25,6 +25,7 @@ import {
   extractFieldPanelClass,
   filterActiveTranslations,
 } from '../../lib/slideFields'
+import { formatVerificationIssues } from '../../lib/verificationIssues'
 import { getLangConfig } from '../../lib/lang'
 import { isStepAccessible, stepPrerequisiteMessage } from '../../lib/projectStatus'
 import type { Project, Translation } from '../../types'
@@ -465,7 +466,8 @@ export function TranslationVerificationStep({ project, onStepComplete }: Transla
                                 </p>
                                 {verification.issues && (
                                   <p className="mt-2 text-xs text-amber-800">
-                                    {verification.issues}
+                                    {formatVerificationIssues(verification.issues, activeTranslations) ??
+                                      verification.issues}
                                   </p>
                                 )}
                               </div>
