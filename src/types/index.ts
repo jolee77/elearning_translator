@@ -185,6 +185,12 @@ export interface ExpertReviewSlideInfo {
   id: string
   slide_num: number
   screen_num: string | null
+  /** 맞춤법 반영 후 DB 원문 (전문가 팝업용) */
+  course_name?: string | null
+  chapter_name?: string | null
+  current_section?: string | null
+  screen_text?: SlideTextBox[] | string | null
+  narration?: SlideTextBox[] | string | null
 }
 
 export interface ExpertReviewByTokenResult {

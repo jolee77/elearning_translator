@@ -223,6 +223,8 @@ const KO_CPM = 320
 - expert_reviews 테이블에 token(hex 32bytes) 생성 — `extensions.gen_random_bytes` 사용
 - /review/:token URL을 설계담당자가 수동으로 전문가에게 공유
 - 전문가는 로그인 없이 해당 URL로 접속
+- **맞춤법 반영 원문 팝업**: `get_expert_review_by_token`이 슬라이드 `screen_text`/`narration` 등 반환 → 「맞춤법 반영 원문 보기」
+- **원본 PPTX 다운로드**: Edge Function `expert-source-pptx`가 토큰 검증 후 Storage signed URL 발급 (레이아웃 참고용, 파일 내 한글은 맞춤법 전일 수 있음)
 - 상세 패널: 한국어 원문 → 1차 번역(읽기전용) → 역번역 검증(읽기전용) → 최종 번역 검토 결과(수정) → 코멘트(버튼으로 펼침)
 - 항목 「완료 → 다음」저장 시 다음 미검토 항목으로 자동 이동 (목록 스크롤 연동)
 - 최종 제출 전 「다시 수정」으로 항목 재편집 가능. 「전체 검증 완료」 시 확인 알럿(vi: 한·베 병기)
@@ -264,6 +266,7 @@ const KO_CPM = 320
 ## 구현 현황 (2026-07-27)
 
 ### 완료
+- [x] 전문가 검증: 맞춤법 반영 원문 팝업 + 원본 PPTX 토큰 기반 다운로드 (`expert-source-pptx`)
 - [x] VN PPTX: 그룹(grpSp) 텍스트도 절대 좌표·좌측/하단 정렬, 오버레이를 spTree 최상위에 배치
 - [x] 전문가 검증 재개 — 재추출 시 완료 링크 삭제, Step5 새 링크 생성, done 리뷰 항목 자동 삽입 금지
 - [x] 역번역 issues — UUID/필드키 대신 화면텍스트·나레이션 원문 인용 (`verify` + Step 4 표시)

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { ExpertSourcePreviewModal } from '../components/expert/ExpertSourcePreviewModal'
 import { AutoResizeTextarea } from '../components/ui/AutoResizeTextarea'
 import { ProgressBar } from '../components/ui/ProgressBar'
 import { Spinner } from '../components/ui/Spinner'
@@ -11,6 +12,7 @@ import {
   useExpertReviewByToken,
   useSaveExpertReviewItem,
 } from '../hooks/useExpertReview'
+import { fetchExpertSourcePptx } from '../lib/edgeFunction'
 import { fieldKeyLabel } from '../lib/slideFields'
 import { getLangConfig } from '../lib/lang'
 import type { ExpertReviewItem } from '../types'
@@ -68,6 +70,8 @@ export function ExpertReviewPage() {
   const [localTexts, setLocalTexts] = useState<Record<string, string>>({})
   const [localComments, setLocalComments] = useState<Record<string, string>>({})
   const [commentOpen, setCommentOpen] = useState(false)
+  const [sourcePreviewOpen, setSourcePreviewOpen] = useState(false)
+  const [pptxDownloading, setPptxDownloading] = useState(false)
   const selectedRowRef = useRef<HTMLTableRowElement | null>(null)
   const localTextsRef = useRef(localTexts)
   const localCommentsRef = useRef(localComments)
@@ -218,6 +222,27 @@ export function ExpertReviewPage() {
     }
   }
 
+  const handleDownloadSourcePptx = async () => {
+    if (!token || pptxDownloading) return
+    setPptxDownloading(true)
+    try {
+      const { signedUrl, fileName } = await fetchExpertSourcePptx(token)
+      const anchor = document.createElement('a')
+      anchor.href = signedUrl
+      anchor.download = fileName
+      anchor.rel = 'noopener'
+      anchor.target = '_blank'
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      showToast('원본 PPTX 다운로드를 시작합니다.', 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'PPTX 다운로드에 실패했습니다.', 'error')
+    } finally {
+      setPptxDownloading(false)
+    }
+  }
+
   const selectedReviewed =
     selectedItem != null && isItemReviewed(selectedItem) && !isReviewDone
 
@@ -255,12 +280,33 @@ export function ExpertReviewPage() {
   return (
     <div className="min-h-screen bg-[#f5f5f5]">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
-          <h1 className="text-lg font-semibold" style={{ color: '#1E88E5' }}>
-            전문가 검증
-          </h1>
-          <p className="mt-0.5 text-sm text-gray-600">{data.project.title}</p>
-          <p className="text-xs text-gray-400">목표 언어: {langName}</p>
+        <div className="mx-auto flex max-w-6xl flex-wrap items-start justify-between gap-3 px-4 py-4 sm:px-6">
+          <div>
+            <h1 className="text-lg font-semibold" style={{ color: '#1E88E5' }}>
+              전문가 검증
+            </h1>
+            <p className="mt-0.5 text-sm text-gray-600">{data.project.title}</p>
+            <p className="text-xs text-gray-400">목표 언어: {langName}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSourcePreviewOpen(true)}
+              className="nb-btn-secondary text-xs"
+            >
+              맞춤법 반영 원문 보기
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadSourcePptx}
+              disabled={pptxDownloading}
+              className="nb-btn-secondary text-xs"
+              title="업로드된 원본 PPTX (레이아웃 참고). 파일 내 한글은 맞춤법 반영 전일 수 있습니다."
+            >
+              {pptxDownloading && <Spinner />}
+              {pptxDownloading ? '준비 중...' : '원본 PPTX 다운로드'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -366,12 +412,19 @@ export function ExpertReviewPage() {
 
             {selectedItem && (
               <div className="nb-card nb-input-surface">
-                <div className="nb-card-header">
+                <div className="nb-card-header flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold">
                     슬라이드 {slideMap.get(selectedItem.slide_id)?.slide_num ?? '-'}
                     {' · '}
                     {fieldKeyLabel(selectedItem.field)}
                   </h3>
+                  <button
+                    type="button"
+                    onClick={() => setSourcePreviewOpen(true)}
+                    className="text-xs font-medium text-[#1E88E5] hover:underline"
+                  >
+                    이 슬라이드 원문 보기
+                  </button>
                 </div>
                 <div className="space-y-4 p-4">
                   <div>
@@ -522,6 +575,14 @@ export function ExpertReviewPage() {
           </div>
         )}
       </main>
+
+      <ExpertSourcePreviewModal
+        open={sourcePreviewOpen}
+        onClose={() => setSourcePreviewOpen(false)}
+        slides={data.slides}
+        focusSlideId={selectedItem?.slide_id}
+        highlightField={selectedItem?.field}
+      />
     </div>
   )
 }
