@@ -260,8 +260,8 @@ function buildPreviewBoxes(
       highlighted,
       text,
     }
-    if (hasGeometry(box)) positioned.push(item)
-    else unpositioned.push(item)
+    // 나레이션은 좌표 유무와 관계없이 하단 패널에 표시
+    positioned.push(item)
   })
 
   return { positioned, unpositioned }
@@ -286,14 +286,12 @@ function NarrationPanel({ boxes }: { boxes: PreviewBox[] }) {
   if (boxes.length === 0) return null
 
   return (
-    <div className="border-t border-emerald-400/80">
+    <div className="absolute bottom-0 left-0 right-0 z-30 max-h-[45%] overflow-y-auto border-t border-emerald-500/80 bg-[#e8f5e9]/95 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
       {boxes.map((box) => (
         <div
           key={previewBoxKey(box)}
           className={`px-2 py-1.5 ${
-            box.highlighted
-              ? 'border-l-4 border-[#1E88E5] bg-[#e3f2fd]/90'
-              : 'bg-[#e8f5e9]/90'
+            box.highlighted ? 'border-l-4 border-[#1E88E5] bg-[#e3f2fd]/95' : ''
           }`}
           style={{
             fontSize: `${boxFontSizePx(box, 'narration')}px`,
@@ -377,59 +375,57 @@ function SlideLayoutCanvas({
   const units = useMemo(() => buildPreviewUnits(screenBoxes), [screenBoxes])
 
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-300 bg-[#fafafa] shadow-inner">
+    <div
+      className="relative w-full overflow-hidden rounded-lg border border-gray-300 bg-[#fafafa] shadow-inner"
+      style={{ aspectRatio: `${SB_CX} / ${SB_CY}` }}
+    >
+      {/* 약한 가이드 그리드 */}
       <div
-        className="relative w-full overflow-hidden"
-        style={{ aspectRatio: `${SB_CX} / ${SB_CY}` }}
-      >
-        {/* 약한 가이드 그리드 */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-40"
-          style={{
-            backgroundImage:
-              'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
-            backgroundSize: '10% 10%',
-          }}
-        />
+        className="pointer-events-none absolute inset-0 opacity-40"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
+          backgroundSize: '10% 10%',
+        }}
+      />
 
-        {units.map((unit) => {
-          if (unit.type === 'table') {
-            return <TablePreview key={`table-${unit.tableId}`} unit={unit} />
-          }
+      {units.map((unit) => {
+        if (unit.type === 'table') {
+          return <TablePreview key={`table-${unit.tableId}`} unit={unit} />
+        }
 
-          const box = unit.box
-          const layout = resolvePreviewLayout(box)
-          const fontPx = boxFontSizePx(box, 'screen')
+        const box = unit.box
+        const layout = resolvePreviewLayout(box)
+        const fontPx = boxFontSizePx(box, 'screen')
 
-          return (
-            <div
-              key={previewBoxKey(box)}
-              className={`absolute rounded border px-0.5 py-0 ${
-                box.highlighted
-                  ? 'z-20 border-[#1E88E5] bg-[#e3f2fd]/90 shadow-md ring-2 ring-[#1E88E5]'
-                  : 'z-10 border-gray-400/70 bg-white/70'
-              }`}
-              style={{
-                left: `${layout.leftPct}%`,
-                top: `${layout.topPct}%`,
-                width: `${Math.max(layout.widthPct, 1)}%`,
-                height: 'auto',
-                fontSize: `${fontPx}px`,
-                lineHeight: 1.25,
-              }}
-              title={box.text}
-            >
-              <PreviewText box={box} singleLine={layout.singleLine} />
-            </div>
-          )
-        })}
+        return (
+          <div
+            key={previewBoxKey(box)}
+            className={`absolute rounded border px-0.5 py-0 ${
+              box.highlighted
+                ? 'z-20 border-[#1E88E5] bg-[#e3f2fd]/90 shadow-md ring-2 ring-[#1E88E5]'
+                : 'z-10 border-gray-400/70 bg-white/70'
+            }`}
+            style={{
+              left: `${layout.leftPct}%`,
+              top: `${layout.topPct}%`,
+              width: `${Math.max(layout.widthPct, 1)}%`,
+              height: 'auto',
+              fontSize: `${fontPx}px`,
+              lineHeight: 1.25,
+            }}
+            title={box.text}
+          >
+            <PreviewText box={box} singleLine={layout.singleLine} />
+          </div>
+        )
+      })}
 
-        {screenBoxes.length === 0 && narrationBoxes.length === 0 && (
-          <p className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">
-            배치할 텍스트 박스가 없습니다
-          </p>
-        )}
-      </div>
+      {screenBoxes.length === 0 && narrationBoxes.length === 0 && (
+        <p className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">
+          배치할 텍스트 박스가 없습니다
+        </p>
+      )}
 
       <NarrationPanel boxes={narrationBoxes} />
     </div>
