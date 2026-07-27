@@ -259,6 +259,11 @@ const KO_CPM = 320
 - nextBMS 스타일 유틸 클래스(`nb-*`) — `src/index.css`, `Layout.tsx`
 - Tailwind 설정: `tailwind.config.js` + `src/index.css`
 
+## 구현 현황 (2026-07-27)
+
+### 완료
+- [x] 맞춤법 최소 교정 — 문장·표현 재작성 금지, 오타·띄어쓰기만 (`spelling-check` 프롬프트 + `sanitizeSpellingField` 후처리)
+
 ## 구현 현황 (2026-07-16)
 
 ### 완료
