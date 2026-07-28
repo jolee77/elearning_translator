@@ -45,6 +45,7 @@ export type ChangeLogAction =
   | 'expert_review_sent'
   | 'expert_review_edited'
   | 'expert_review_done'
+  | 'expert_review_skipped'
   | 'download'
 
 export type ChangeLogStage = 'spelling' | 'translation' | 'verification' | 'expert_review'

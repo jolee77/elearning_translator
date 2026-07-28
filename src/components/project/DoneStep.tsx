@@ -38,6 +38,7 @@ const ACTION_LABELS: Record<ChangeLogAction, string> = {
   expert_review_sent: '전문가 검증 요청',
   expert_review_edited: '전문가 번역 수정',
   expert_review_done: '전문가 검증 완료',
+  expert_review_skipped: '전문가 검증 건너뛰기',
   download: '다운로드',
 }
 
@@ -251,6 +252,8 @@ export function DoneStep({ project }: DoneStepProps) {
 
   const isBusy = downloading !== null
   const isProjectDone = project.status === 'done'
+  const expertSkipped = eventLogs.some((log) => log.action === 'expert_review_skipped')
+  const hasExpertCompletion = Boolean(completedReview?.status === 'done')
 
   if (!isProjectDone) {
     return (
@@ -258,13 +261,13 @@ export function DoneStep({ project }: DoneStepProps) {
         <div>
           <h3 className="nb-step-title">Step 6. 완료</h3>
           <p className="nb-step-desc">
-            전문가 검증이 완료되면 산출물을 다운로드할 수 있습니다.
+            전문가 검증을 완료하거나 건너뛰면 산출물을 다운로드할 수 있습니다.
           </p>
         </div>
         <div className="nb-empty-state">
           <p className="text-sm text-gray-500">아직 프로젝트가 완료되지 않았습니다.</p>
           <p className="mt-1 text-xs text-gray-400">
-            전문가 검증이 완료되면 이 단계에서 산출물을 다운로드할 수 있습니다.
+            Step 5에서 전문가 검증을 완료하거나 「전문가 검증 건너뛰기」를 선택해 주세요.
           </p>
         </div>
       </div>
@@ -276,7 +279,9 @@ export function DoneStep({ project }: DoneStepProps) {
       <div>
         <h3 className="nb-step-title">Step 6. 완료</h3>
         <p className="nb-step-desc">
-          전문가 검증이 완료되었습니다. 산출물을 다운로드할 수 있습니다.
+          {expertSkipped && !hasExpertCompletion
+            ? '전문가 검증을 건너뛰었습니다. 역번역 검증까지 반영된 산출물을 다운로드할 수 있습니다.'
+            : '전문가 검증이 완료되었습니다. 산출물을 다운로드할 수 있습니다.'}
         </p>
       </div>
 
@@ -287,11 +292,17 @@ export function DoneStep({ project }: DoneStepProps) {
           </svg>
           <p className="text-sm font-semibold text-emerald-800">프로젝트가 완료되었습니다.</p>
         </div>
-        {completedReview?.expert_name && (
+        {expertSkipped && !hasExpertCompletion ? (
           <p className="mt-1 text-sm text-emerald-700">
-            검증 전문가: {completedReview.expert_name}
-            {completedReview.expert_email && ` (${completedReview.expert_email})`}
+            전문가 검증을 건너뛰었습니다. 다운로드 내용은 번역·역번역 검증 결과 기준입니다.
           </p>
+        ) : (
+          completedReview?.expert_name && (
+            <p className="mt-1 text-sm text-emerald-700">
+              검증 전문가: {completedReview.expert_name}
+              {completedReview.expert_email && ` (${completedReview.expert_email})`}
+            </p>
+          )
         )}
       </div>
 

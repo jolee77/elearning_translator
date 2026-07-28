@@ -120,7 +120,7 @@ export function ProjectDetailPage() {
 
       {viewStep === 5 && (
         <div className="nb-card p-4 sm:p-6">
-          <ExpertReviewStep project={project} />
+          <ExpertReviewStep project={project} onSkipped={() => setViewStep(6)} />
         </div>
       )}
 

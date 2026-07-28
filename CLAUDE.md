@@ -103,8 +103,8 @@ uploaded → extracted → spelling → spelling_done → selection_done → tra
   Step2: 맞춤법 검사 — 슬라이드 접기·펼치기, 슬라이드 단위 일괄 선택, 변경·검토 필요 항목만 표시
   Step3: 번역 대상 선택 — 슬라이드·텍스트 단위 제외 (번역·전문가 검증에 공통 반영)
   Step4: 번역·역번역 검증 — Step3 제외분 미포함 (추가 제외 선택 없음)
-  Step5: 전문가 검증 요청 (링크 생성) + 검토 현황 표
-  Step6: 완료 → 다운로드
+  Step5: 전문가 검증 요청 (링크 생성) + 검토 현황 표 — 「전문가 검증 건너뛰기」로 done 전환 가능
+  Step6: 완료 → 다운로드 (전문가 검증 완료 또는 건너뛰기 후)
 /help                   이용 절차·기능·편의기능 도움말 (헤더 「도움말」)
 /review/:token          전문가 검증 (로그인 없이 토큰, 역번역 포함)
 /admin/settings         관리자 - API 키 설정
@@ -224,6 +224,7 @@ const KO_CPM = 320
 - expert_reviews 테이블에 token(hex 32bytes) 생성 — `extensions.gen_random_bytes` 사용
 - /review/:token URL을 설계담당자가 수동으로 전문가에게 공유
 - 전문가는 로그인 없이 해당 URL로 접속
+- **설계자·관리자 건너뛰기**: Step5 「전문가 검증 건너뛰기」→ `projects.status = done`, change_logs `expert_review_skipped` — 역번역 검증까지 반영된 VN PPTX·엑셀 다운로드 가능
 - **맞춤법 반영 원문 팝업**: `get_expert_review_by_token`이 슬라이드 `screen_text`/`narration` 등 반환 → 「맞춤법 반영 원문 보기」
 - **원본 PPTX 다운로드**: Edge Function `expert-source-pptx`가 토큰 검증 후 Storage signed URL 발급 (레이아웃 참고용, 파일 내 한글은 맞춤법 전일 수 있음)
 - 상세 패널: 한국어 원문 → 1차 번역(읽기전용) → 역번역 검증(읽기전용) → 최종 번역 검토 결과(수정) → 코멘트(버튼으로 펼침)
@@ -263,6 +264,11 @@ const KO_CPM = 320
 - primary: `#162B52` (네이비), accent: `#4B40E0` (인디고)
 - nextBMS 스타일 유틸 클래스(`nb-*`) — `src/index.css`, `Layout.tsx`
 - Tailwind 설정: `tailwind.config.js` + `src/index.css`
+
+## 구현 현황 (2026-07-28)
+
+### 완료
+- [x] 전문가 검증 건너뛰기 — Step5에서 설계자·관리자가 역번역 검증 완료 후 `done`으로 전환, VN PPTX·엑셀 다운로드
 
 ## 구현 현황 (2026-07-27)
 

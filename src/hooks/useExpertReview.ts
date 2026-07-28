@@ -238,6 +238,54 @@ export function useCompleteExpertReview() {
   })
 }
 
+/** 역번역 검증까지 완료된 프로젝트를 전문가 검증 없이 완료(done)로 전환 */
+export function useSkipExpertReview() {
+  const { user, profile } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ projectId }: { projectId: string }): Promise<void> => {
+      const { data: project, error: fetchError } = await supabase
+        .from('projects')
+        .select('status')
+        .eq('id', projectId)
+        .single()
+
+      if (fetchError) throw fetchError
+      if (project.status !== 'verified' && project.status !== 'expert_review') {
+        throw new Error('역번역 검증이 완료된 후에만 전문가 검증을 건너뛸 수 있습니다.')
+      }
+      if (project.status === 'done') {
+        throw new Error('이미 완료된 프로젝트입니다.')
+      }
+
+      const { error: statusError } = await supabase
+        .from('projects')
+        .update({ status: 'done' })
+        .eq('id', projectId)
+
+      if (statusError) throw statusError
+
+      if (user) {
+        const { error: logError } = await supabase.from('change_logs').insert({
+          project_id: projectId,
+          user_id: user.id,
+          changed_by: profile?.name?.trim() || null,
+          action: 'expert_review_skipped',
+          detail: '전문가 검증을 건너뛰고 완료로 이동 (역번역 검증까지 반영)',
+        })
+        if (logError) throw logError
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: [...expertReviewsQueryKey, variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: [...changeLogsQueryKey, variables.projectId] })
+    },
+  })
+}
+
 /** 검토 전 스냅샷(original_vi_text)과 현재 번역문(vi_text) 비교 */
 export function isExpertTextChanged(
   originalViText: string | null | undefined,

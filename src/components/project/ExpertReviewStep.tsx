@@ -9,6 +9,7 @@ import {
   useCreateExpertReview,
   useExpertReviewItems,
   useExpertReviews,
+  useSkipExpertReview,
 } from '../../hooks/useExpertReview'
 import { fieldKeyLabel } from '../../lib/slideFields'
 import { useSlides } from '../../hooks/useSlides'
@@ -17,6 +18,7 @@ import type { ExpertReviewItem, Project } from '../../types'
 
 interface ExpertReviewStepProps {
   project: Project
+  onSkipped?: () => void
 }
 
 function isItemReviewed(item: ExpertReviewItem): boolean {
@@ -27,11 +29,12 @@ function hasTextChange(item: ExpertReviewItem): boolean {
   return isExpertTextChanged(item.original_vi_text, item.vi_text)
 }
 
-export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
+export function ExpertReviewStep({ project, onSkipped }: ExpertReviewStepProps) {
   const { showToast } = useToast()
   const { data: reviews = [], isLoading, refetch, isFetching } = useExpertReviews(project.id)
   const { data: slides = [] } = useSlides(project.id)
   const createReview = useCreateExpertReview()
+  const skipReview = useSkipExpertReview()
 
   // 진행 중 링크만 활성. 완료만 있으면 새 링크 생성 폼을 보여 재검증 가능하게 함
   const activeReview = reviews.find((r) => r.status !== 'done') ?? null
@@ -52,8 +55,11 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
   const [memo, setMemo] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [confirmSkip, setConfirmSkip] = useState(false)
 
   const accessible = isStepAccessible(5, project.status)
+  const canSkip =
+    accessible && (project.status === 'verified' || project.status === 'expert_review')
   const needsNewLink = !activeReview
   const isCreating = needsNewLink || showCreateForm
   const reviewUrl = displayedReview ? getReviewUrl(displayedReview.token) : ''
@@ -116,6 +122,27 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
     showToast('상태를 새로고침했습니다.', 'info')
   }
 
+  const handleSkipExpertReview = async () => {
+    if (!canSkip) {
+      showToast(stepPrerequisiteMessage(5), 'error')
+      return
+    }
+    try {
+      await skipReview.mutateAsync({ projectId: project.id })
+      setConfirmSkip(false)
+      showToast(
+        '전문가 검증을 건너뛰었습니다. 역번역 검증까지 반영된 산출물을 다운로드할 수 있습니다.',
+        'success',
+      )
+      onSkipped?.()
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : '전문가 검증 건너뛰기에 실패했습니다.',
+        'error',
+      )
+    }
+  }
+
   const reviewStatusLabel = (status: string) => {
     switch (status) {
       case 'pending':
@@ -129,7 +156,59 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
     }
   }
 
-  const isBusy = createReview.isPending || isFetching || isFetchingItems
+  const isBusy =
+    createReview.isPending || skipReview.isPending || isFetching || isFetchingItems
+
+  const skipPanel = canSkip && (
+    <div className="nb-card border border-dashed border-gray-300 px-4 py-4">
+      <h4 className="text-sm font-semibold text-gray-800">전문가 검증 없이 완료</h4>
+      <p className="mt-1 text-sm text-gray-600">
+        외부 전문가 검증을 생략하고, 역번역 검증까지 완료된 번역문으로 VN 스토리보드(PPTX)와
+        엑셀을 바로 다운로드할 수 있습니다.
+      </p>
+      {!confirmSkip ? (
+        <button
+          type="button"
+          onClick={() => setConfirmSkip(true)}
+          disabled={isBusy}
+          className="nb-btn-secondary mt-3"
+        >
+          전문가 검증 건너뛰기
+        </button>
+      ) : (
+        <div className="nb-alert nb-alert--warning mt-3 space-y-3">
+          <p className="text-sm">
+            전문가 검증을 건너뛰고 완료 단계로 이동할까요?
+            {activeReview && (
+              <>
+                {' '}
+                진행 중인 검증 링크는 그대로 남지만, 프로젝트는 완료 처리됩니다.
+              </>
+            )}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSkipExpertReview()}
+              disabled={isBusy}
+              className="nb-btn-primary"
+            >
+              {skipReview.isPending && <Spinner className="text-white" />}
+              {skipReview.isPending ? '처리 중...' : '건너뛰고 완료로 이동'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmSkip(false)}
+              disabled={isBusy}
+              className="nb-btn-secondary"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 
   const createForm = (
     <div className="nb-card nb-input-surface space-y-4 p-4">
@@ -213,7 +292,7 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
           <h3 className="text-base font-semibold text-gray-900">Step 5. 전문가 검증</h3>
           <p className="mt-0.5 text-sm text-gray-500">
             외부 전문가에게 검증 링크를 공유합니다. Step 3에서 제외한 항목은 번역되지 않아 링크에도
-            포함되지 않습니다.
+            포함되지 않습니다. 필요하면 전문가 검증을 건너뛰고 산출물을 바로 받을 수 있습니다.
           </p>
         </div>
         {activeReview && (
@@ -232,6 +311,8 @@ export function ExpertReviewStep({ project }: ExpertReviewStepProps) {
       {!accessible && (
         <div className="nb-alert nb-alert--warning">{stepPrerequisiteMessage(5)}</div>
       )}
+
+      {skipPanel}
 
       {isLoading ? (
         <div className="nb-empty-state">

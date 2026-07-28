@@ -104,7 +104,7 @@ export function stepPrerequisiteMessage(step: number): string {
     case 5:
       return '이전 단계(번역·역번역 검증)를 먼저 완료해 주세요.'
     case 6:
-      return '전문가 검증이 완료된 후 완료 단계로 이동할 수 있습니다.'
+      return '전문가 검증을 완료하거나 건너뛴 후 완료 단계로 이동할 수 있습니다.'
     default:
       return '이전 단계를 먼저 완료해 주세요.'
   }

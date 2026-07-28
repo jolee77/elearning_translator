@@ -63,6 +63,7 @@ const CHANGE_LOG_ACTION_LABELS: Record<ChangeLogAction, string> = {
   expert_review_sent: '전문가 검증 요청',
   expert_review_edited: '전문가 번역 수정',
   expert_review_done: '전문가 검증 완료',
+  expert_review_skipped: '전문가 검증 건너뛰기',
   download: '다운로드',
 }
 
