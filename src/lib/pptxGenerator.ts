@@ -1,5 +1,16 @@
 import JSZip from 'jszip'
-import { overlapsScreenContent, SB_CX, SB_CY } from './pptxParser'
+import {
+  extractHangulNarrationText,
+  hasHangulNarrationLabel,
+  isTranslationResultTable,
+  NARRATION_KO_LABEL,
+  NARRATION_VI_LABEL,
+  overlapsScreenContent,
+  SB_CX,
+  SB_CY,
+  TRANSLATION_TABLE_RESULT_COL,
+  TRANSLATION_TABLE_SOURCE_COL,
+} from './pptxParser'
 import { NARRATION_FIELD_KEY } from './lang'
 import type { SpellingResult, Translation } from '../types'
 
@@ -220,24 +231,23 @@ function compactPptxMatchKey(text: string): string {
   return normalizePptxMatchKey(text).replace(/\s+/g, '')
 }
 
-function narrationContentKey(text: string): string {
-  return compactPptxMatchKey(text.replace(/#\d+/g, ''))
-}
-
 function narrationShapeScore(info: TextShapeInfo): number {
   const cy = (info.y + Math.max(info.h, 1) / 2) / SB_CY
   let score = 0
+  if (hasHangulNarrationLabel(info.text)) score += 200
   if (cy >= 0.74) score += 100
   else if (cy >= 0.54) score += 40
-  if (/#\d/.test(info.text)) score += 50
   score += Math.min(info.text.length / 50, 40)
   return score
 }
 
-function selectPrimaryNarrationShape(shapes: TextShapeInfo[]): TextShapeInfo | null {
-  const candidates = shapes.filter(
-    (s) => isNarrationBox(s.x, s.y, s.w, s.h) && s.text.trim().length > 0 && !isHashNumberOnly(s.text),
-  )
+/** `(한글)` / `(베트남어)` 이중언어 나레이션 박스만 선택 (교수·성우 스크립트 제외) */
+function selectLabeledNarrationShape(shapes: TextShapeInfo[]): TextShapeInfo | null {
+  const candidates = shapes.filter((s) => {
+    if (!hasHangulNarrationLabel(s.text) || !s.text.trim() || isHashNumberOnly(s.text)) return false
+    if (isNarrationBox(s.x, s.y, s.w, s.h)) return true
+    return s.y / SB_CY >= 0.7
+  })
   if (candidates.length === 0) return null
   return [...candidates].sort((a, b) => narrationShapeScore(b) - narrationShapeScore(a))[0]
 }
@@ -361,14 +371,23 @@ function buildParagraph(text: string, lang: string, sz: number, color: string): 
   return `<a:p><a:pPr/>${buildTextRun(text, lang, sz, color)}</a:p>`
 }
 
-/** 라벨 없이 한글(맞춤법 반영) + 빈 줄 + 베트남어 */
+/**
+ * `(한글) 맞춤법 반영본` + `(베트남어) 번역문` 형식.
+ * 한글 여러 줄이면 첫 줄에만 라벨, 베트남어도 첫 줄에만 라벨.
+ */
 function buildNarrationTxBodyXml(koText: string, viText: string, sz: number): string {
-  const koLines = koText.split('\n')
-  const viLines = viText.split('\n')
+  const koLines = koText.split('\n').map((l) => l.trimEnd())
+  const viLines = viText.split('\n').map((l) => l.trimEnd())
+  const firstKo = koLines[0] ?? ''
+  const restKo = koLines.slice(1)
+  const firstVi = viLines[0] ?? ''
+  const restVi = viLines.slice(1)
+
   const paragraphs = [
-    ...koLines.map((line) => buildParagraph(line, 'ko-KR', sz, '000000')),
-    '<a:p><a:pPr/></a:p>',
-    ...viLines.map((line) => buildParagraph(line, 'vi-VN', sz, '0033CC')),
+    buildParagraph(`${NARRATION_KO_LABEL} ${firstKo}`.trimEnd(), 'ko-KR', sz, '000000'),
+    ...restKo.map((line) => buildParagraph(line, 'ko-KR', sz, '000000')),
+    buildParagraph(`${NARRATION_VI_LABEL} ${firstVi}`.trimEnd(), 'vi-VN', sz, '0033CC'),
+    ...restVi.map((line) => buildParagraph(line, 'vi-VN', sz, '0033CC')),
   ]
 
   return `<p:txBody xmlns:p="${P_NS}" xmlns:a="${A_NS}"><a:bodyPr wrap="square" rtlCol="0"><a:spAutoFit/></a:bodyPr><a:lstStyle/>${paragraphs.join('')}</p:txBody>`
@@ -434,17 +453,6 @@ function replaceNarrationShape(shape: Element, doc: Document, koText: string, vi
   }
 
   applyNarrationStyle(shape, doc)
-}
-
-/** 중복 나레이션 박스 텍스트만 비움 (박스는 유지) */
-function clearShapeText(shape: Element, doc: Document): void {
-  const oldTxBody = firstChildByLocalName(shape, 'txBody')
-  const emptyXml = `<p:txBody xmlns:p="${P_NS}" xmlns:a="${A_NS}"><a:bodyPr wrap="square" rtlCol="0"/><a:lstStyle/><a:p><a:pPr/><a:endParaRPr lang="ko-KR"/></a:p></p:txBody>`
-  const parsed = new DOMParser().parseFromString(emptyXml, 'application/xml')
-  const imported = doc.importNode(parsed.documentElement, true)
-  if (oldTxBody) {
-    shape.replaceChild(imported, oldTxBody)
-  }
 }
 
 /** 번역 오버레이 박스 높이(EMU). cy=0이면 선처럼 보여 선택이 어려움 */
@@ -530,6 +538,98 @@ function isSubtitleLikeBox(x: number, y: number, w: number, h: number): boolean 
   return xR > 0.08 && xR < 0.5 && yR >= 0.07 && yR < 0.2 && yBottom <= 0.28
 }
 
+function directChildrenByLocalName(parent: Element, localName: string): Element[] {
+  return Array.from(parent.children).filter(
+    (c): c is Element => c instanceof Element && c.localName === localName,
+  )
+}
+
+function cellGridSpan(tc: Element): number {
+  const tcPr = firstChildByLocalName(tc, 'tcPr')
+  if (!tcPr) return 1
+  const spanEl = firstChildByLocalName(tcPr, 'gridSpan')
+  const val = spanEl?.getAttribute('val')
+  const n = val ? parseInt(val, 10) : 1
+  return Number.isFinite(n) && n > 1 ? n : 1
+}
+
+function cellIsHMerge(tc: Element): boolean {
+  const tcPr = firstChildByLocalName(tc, 'tcPr')
+  if (!tcPr) return false
+  return Boolean(firstChildByLocalName(tcPr, 'hMerge'))
+}
+
+/** 표 셀에 베트남어 번역문 기입 (a:txBody, 파란 글씨) */
+function setTableCellViText(tc: Element, doc: Document, viText: string, fontSz: number): void {
+  const paragraphs = viText
+    .split('\n')
+    .map((line) => buildParagraph(line.length ? line : ' ', 'vi-VN', fontSz, '0033CC'))
+    .join('')
+
+  const txBodyXml = `<a:txBody xmlns:a="${A_NS}"><a:bodyPr/><a:lstStyle/>${paragraphs}</a:txBody>`
+  const parsed = new DOMParser().parseFromString(txBodyXml, 'application/xml')
+  const newTxBody = doc.importNode(parsed.documentElement, true)
+
+  const oldTxBody = firstChildByLocalName(tc, 'txBody')
+  if (oldTxBody) {
+    tc.replaceChild(newTxBody, oldTxBody)
+  } else {
+    const tcPr = firstChildByLocalName(tc, 'tcPr')
+    if (tcPr) tc.insertBefore(newTxBody, tcPr)
+    else tc.appendChild(newTxBody)
+  }
+}
+
+/**
+ * `# | 번역 대상 텍스트 | 번역결과` 표: 2열 원문으로 번역을 찾아 같은 행 3열에 기입.
+ * 영역(screen 밴드)과 무관하게 처리. 동일 원문 행은 같은 번역을 재사용.
+ */
+function fillTranslationResultTables(
+  root: Element,
+  doc: Document,
+  index: TranslationIndex,
+  used: Set<string>,
+  opts?: MatchOpts,
+): void {
+  const emptyUsed = new Set<string>()
+
+  for (const frame of elementsByLocalName(root, 'graphicFrame')) {
+    const table = firstChildByLocalName(frame, 'tbl')
+    if (!table || !isTranslationResultTable(table)) continue
+
+    const rows = directChildrenByLocalName(table, 'tr')
+    for (let r = 0; r < rows.length; r++) {
+      if (r === 0) continue // 헤더
+
+      const cells = directChildrenByLocalName(rows[r], 'tc')
+      const byCol = new Map<number, Element>()
+      let colIndex = 0
+      for (const tc of cells) {
+        const span = cellGridSpan(tc)
+        if (!cellIsHMerge(tc)) byCol.set(colIndex, tc)
+        colIndex += span
+      }
+
+      const sourceTc = byCol.get(TRANSLATION_TABLE_SOURCE_COL)
+      const resultTc = byCol.get(TRANSLATION_TABLE_RESULT_COL)
+      if (!sourceTc || !resultTc) continue
+
+      const sourceTx = firstChildByLocalName(sourceTc, 'txBody')
+      const sourceText = sourceTx ? extractBodyText(sourceTx).trim() : ''
+      if (!sourceText) continue
+
+      // 표 안 동일 원문 행은 재사용 — used는 오버레이 중복만 막도록 반영
+      const tr = findTranslation(sourceText, 'screen', index, emptyUsed, opts)
+      if (!tr?.vi_text.trim()) continue
+      used.add(tr.id)
+      emptyUsed.delete(tr.id)
+
+      const fontSz = sourceTx ? extractFontSize(sourceTx) ?? 1200 : 1200
+      setTableCellViText(resultTc, doc, tr.vi_text.trim(), fontSz)
+    }
+  }
+}
+
 function processSlideXml(
   xml: string,
   _slideNum: number,
@@ -549,28 +649,21 @@ function processSlideXml(
 
   const overlayXmls: string[] = []
 
-  // ── 나레이션: 단일 박스만 덮어쓰기 (라벨 없이 한글+베트남어) ──
-  const primaryNarr = selectPrimaryNarrationShape(shapes)
-  if (primaryNarr) {
-    const tr = findTranslation(primaryNarr.text, 'narration', index, usedTranslations, opts)
-    if (tr?.vi_text.trim()) {
-      const koText = tr.source.trim() || primaryNarr.text.trim()
-      replaceNarrationShape(primaryNarr.shape, doc, koText, tr.vi_text.trim())
+  // ── 번역 결과 표: 2열 원문 → 3열 번역결과 기입 (영역 무관) ──
+  fillTranslationResultTables(spTree, doc, index, usedTranslations, opts)
 
-      const primaryKey = narrationContentKey(primaryNarr.text)
-      for (const info of shapes) {
-        if (info.shape === primaryNarr.shape) continue
-        if (!isNarrationBox(info.x, info.y, info.w, info.h)) continue
-        if (!info.text.trim() || isHashNumberOnly(info.text)) continue
-        const key = narrationContentKey(info.text)
-        if (
-          key &&
-          primaryKey &&
-          (key === primaryKey || primaryKey.includes(key) || key.includes(primaryKey))
-        ) {
-          clearShapeText(info.shape, doc)
-        }
-      }
+  // ── 나레이션: (한글)/(베트남어) 박스만 덮어쓰기 — 교수·성우 스크립트는 유지 ──
+  const labeledNarr = selectLabeledNarrationShape(shapes)
+  if (labeledNarr) {
+    const koFromBox = extractHangulNarrationText(labeledNarr.text)?.trim() ?? ''
+    const tr =
+      findTranslation(koFromBox, 'narration', index, usedTranslations, opts) ??
+      (koFromBox
+        ? undefined
+        : findTranslation(labeledNarr.text, 'narration', index, usedTranslations, opts))
+    if (tr?.vi_text.trim()) {
+      const koText = tr.source.trim() || koFromBox
+      replaceNarrationShape(labeledNarr.shape, doc, koText, tr.vi_text.trim())
     }
   }
 

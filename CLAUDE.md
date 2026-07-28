@@ -133,7 +133,7 @@ EMU: `SB_CX=12192000`, `SB_CY=6858000`.
 | screen | x 13%~75%, y 8%~78% | 화면텍스트 |
 | subtitle | 좌측 상단 부제목 (chapter 밴드) | 화면텍스트 |
 | desc | x 58%~100%, y 8%~63% | 제외 |
-| narration | y 54%~100% | 나레이션 (단일 박스 합침) |
+| narration | y 54%~100% | 나레이션 — **`(한글)` 라벨 문장만** 추출 |
 | image_num | x 58%~100%, y 63%~78% | 제외 |
 | menu | x 0%~25% | 제외 |
 | header | 상단 과정명 등 | 제외 (화면번호만 `screen_num`, 부제목은 screen) |
@@ -146,31 +146,27 @@ desc/image_num은 screen과 영역이 겹침. **도형 중심이 화면 밴드(x
 ### screen_text / narration 저장
 - DB `slides.screen_text`, `slides.narration` → text 컬럼, JSON `SlideTextBox[]`
 - `normalizeScreenText` / `normalizeNarration`, `formatScreenText` / `formatNarration`
-- 나레이션: 스크립트 밴드(싱크 마커)와 하단 밴드가 동시에 잡히면 **단일 박스만 선택** (`selectPrimaryNarrationShape`), 줄 단위는 `#` 제거 후 중복 제거
-- **싱크 마커**: 나레이션 `#1` `#2` 유지, `‹#›`·`<#>`·단독 `#` 제외 (`isBareSyncMarker`)
+- **나레이션 추출**: `(한글)` 라벨이 앞에 있는 문장만 대상 (`extractHangulNarrationText`). `교수:`/`성우:` 스크립트 밴드·라벨 없는 박스는 제외
+- **싱크 마커**: 화면텍스트 `#N` 단독 박스 제외 (`isBareSyncMarker` / `isSyncMarkerOnly`)
 - 화면텍스트: `#N` 단독 박스·화면번호 패턴·게티/URL 메타데이터 제외
 - **표(`graphicFrame`/`tbl`)**: 셀별 x/y/w/h + `table_id`/`table_row`/`table_col` 저장 (표 전체 xfrm을 셀에 복제하지 않음). 전문가 원문 미리보기에서 표 UI로 표시
+- **번역 결과 표** (`# | 번역 대상 텍스트 | 번역결과`): 영역과 무관하게 **2열만** 화면텍스트로 추출(헤더·1열·3열 제외). VN PPTX는 같은 행 **3열에 번역문 기입**(파란 글씨, 오버레이 박스 추가 없음)
 
 ### 슬라이드 타입 (번호가 아닌 패턴)
 intro / divider / outro / quiz / apply / lesson / content — ~~slideNum≤9 guide~~ **폐지**
-
-### 좌표 없는 플레이스홀더 나레이션
-- xfrm 없어도 `(0,0)` 수집 → `findFallbackNarrationShape` 보완
-- `isDirectorNote`로 연출 지시 제외
 
 ## VN PPTX 생성 로직 (중요)
 KO PPTX를 기반으로 번역 박스를 추가하는 방식.
 기존 한글 텍스트 박스는 건드리지 않고, 아래에 새 박스를 삽입.
 
 ### 나레이션 박스 처리
-기존 나레이션 박스를 **덮어쓰기** (추가 박스 생성하지 않음).
-중복 나레이션 박스가 있으면 본문 키 기준으로 하나만 채우고 나머지는 비움.
+`(한글)` / `(베트남어)` 이중언어 박스만 **덮어쓰기** (추가 박스 생성하지 않음).
+`교수:`/`성우:` 스크립트 밴드는 그대로 유지.
 
-내용 형식 (라벨 없음):
+내용 형식:
 ```
-한글 맞춤법 반영본
-
-베트남어 번역문
+(한글) 맞춤법 반영본
+(베트남어) 베트남어 번역문
 ```
 
 스타일:
@@ -178,7 +174,7 @@ KO PPTX를 기반으로 번역 박스를 추가하는 방식.
 - 테두리: FF0000 (빨강)
 - 폰트: sz=1200, 한글 lang=ko-KR / 베트남어 lang=vi-VN color=0033CC
 
-매칭: PPTX 원문 ↔ `translations.source` (공백 정규화) + `spelling_results` original→suggestion 연결
+매칭: `(한글)` 뒤 원문 ↔ `translations.source` (공백 정규화) + `spelling_results` original→suggestion 연결
 
 ### 화면 텍스트 박스 처리
 각 한글 텍스트 박스 하단에 새 텍스트 박스 추가:
@@ -268,6 +264,8 @@ const KO_CPM = 320
 ## 구현 현황 (2026-07-28)
 
 ### 완료
+- [x] 번역 결과 표 — `# | 번역 대상 텍스트 | 번역결과` 표의 2열을 영역 무관 추출, VN PPTX 3열에 번역 기입
+- [x] 나레이션 `(한글)` 라벨만 추출 — `교수:`/`성우:` 스크립트 제외, VN PPTX는 `(베트남어)` 영역에 번역 삽입
 - [x] 전문가 검증 건너뛰기 — Step5에서 설계자·관리자가 역번역 검증 완료 후 `done`으로 전환, VN PPTX·엑셀 다운로드
 
 ## 구현 현황 (2026-07-27)

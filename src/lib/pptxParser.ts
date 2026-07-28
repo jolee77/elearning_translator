@@ -27,6 +27,40 @@ interface RawShape {
   tableId?: string
   tableRow?: number
   tableCol?: number
+  /** `# | 번역 대상 텍스트 | 번역결과` 표의 2열 — 영역 무관 화면텍스트 */
+  fromTranslationTable?: boolean
+}
+
+/** 번역 대상/결과 표: 1열=# · 2열=원문 · 3열=번역결과 (0-based col 1→2) */
+export const TRANSLATION_TABLE_SOURCE_COL = 1
+export const TRANSLATION_TABLE_RESULT_COL = 2
+
+function rowCellTexts(row: Element): string[] {
+  const cells = directChildrenByLocalName(row, 'tc')
+  const texts: string[] = []
+  let colIndex = 0
+  for (const tc of cells) {
+    const span = cellGridSpan(tc)
+    if (!cellIsHMerge(tc)) {
+      const txBody = firstChildByLocalName(tc, 'txBody')
+      const text = txBody ? extractBodyText(txBody) : ''
+      while (texts.length < colIndex) texts.push('')
+      texts[colIndex] = text
+    }
+    colIndex += span
+  }
+  return texts
+}
+
+/** 헤더가「번역 대상 텍스트」「번역결과」인 3열 이상 표 */
+export function isTranslationResultTable(table: Element): boolean {
+  const rows = directChildrenByLocalName(table, 'tr')
+  if (rows.length === 0) return false
+  const header = rowCellTexts(rows[0])
+  if (header.length < 3) return false
+  const sourceHeader = (header[TRANSLATION_TABLE_SOURCE_COL] ?? '').replace(/\s+/g, '')
+  const resultHeader = (header[TRANSLATION_TABLE_RESULT_COL] ?? '').replace(/\s+/g, '')
+  return /번역대상/.test(sourceHeader) || /번역결과/.test(resultHeader)
 }
 
 function directChildrenByLocalName(parent: Element, localName: string): Element[] {
@@ -53,6 +87,8 @@ function cellIsHMerge(tc: Element): boolean {
 /**
  * graphicFrame 표의 각 셀에 개별 좌표를 부여한다.
  * (이전에는 표 전체 xfrm을 모든 셀에 복제해 미리보기에서 겹침)
+ *
+ * `# | 번역 대상 텍스트 | 번역결과` 표는 영역과 무관하게 2열(원문)만 화면텍스트로 추출.
  */
 function pushTableShapes(
   shapes: RawShape[],
@@ -66,6 +102,8 @@ function pushTableShapes(
   const local = getShapeTransform(graphicFrame)
   const abs = toSlideCoords(local.x, local.y, local.w, local.h, ctx)
   if (abs.w <= 0 || abs.h <= 0) return
+
+  const translationTable = isTranslationResultTable(table)
 
   const tblGrid = firstChildByLocalName(table, 'tblGrid')
   const gridCols = tblGrid ? directChildrenByLocalName(tblGrid, 'gridCol') : []
@@ -101,6 +139,19 @@ function pushTableShapes(
     let colIndex = 0
     let xOff = 0
 
+    // 번역 결과 표: 헤더 행 스킵
+    if (translationTable && r === 0) {
+      for (const tc of cells) {
+        const span = cellGridSpan(tc)
+        let cellW = 0
+        for (let s = 0; s < span; s++) cellW += colWidths[colIndex + s] ?? 0
+        xOff += cellW
+        colIndex += span
+      }
+      yOff += rowH
+      continue
+    }
+
     for (const tc of cells) {
       const span = cellGridSpan(tc)
       let cellW = 0
@@ -111,7 +162,10 @@ function pushTableShapes(
       if (!cellIsHMerge(tc)) {
         const txBody = firstChildByLocalName(tc, 'txBody')
         const text = txBody ? extractBodyText(txBody) : ''
-        if (text) {
+        const keep =
+          Boolean(text) &&
+          (!translationTable || colIndex === TRANSLATION_TABLE_SOURCE_COL)
+        if (keep) {
           shapes.push({
             text,
             x: abs.x + xOff,
@@ -122,6 +176,7 @@ function pushTableShapes(
             tableId,
             tableRow: r,
             tableCol: colIndex,
+            fromTranslationTable: translationTable || undefined,
           })
         }
       }
@@ -720,76 +775,58 @@ function isDirectorNote(text: string): boolean {
   return false
 }
 
+/** 스토리보드 나레이션 이중언어 박스 라벨 */
+export const NARRATION_KO_LABEL = '(한글)'
+export const NARRATION_VI_LABEL = '(베트남어)'
+
+export function hasHangulNarrationLabel(text: string): boolean {
+  return text.includes(NARRATION_KO_LABEL)
+}
+
+/**
+ * `(한글) … (베트남어)` 구간에서 한글 본문만 추출.
+ * 라벨·베트남어 영역은 제외. 없으면 null.
+ */
+export function extractHangulNarrationText(text: string): string | null {
+  if (!hasHangulNarrationLabel(text)) return null
+
+  const parts: string[] = []
+  const re = /\(한글\)\s*([\s\S]*?)(?=\s*\(베트남어\)|\s*\(한글\)|$)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const segment = m[1].replace(/^\s+|\s+$/g, '').trim()
+    if (segment) parts.push(segment)
+  }
+  return parts.length > 0 ? parts.join('\n') : null
+}
+
 function narrationContentKey(text: string): string {
   return text
     .replace(/#\d+/g, '')
+    .replace(/\(한글\)/g, '')
+    .replace(/\(베트남어\)/g, '')
     .replace(/성우\s*[:：]/gi, '')
+    .replace(/교수\s*[:：]/gi, '')
     .replace(/\s+/g, '')
     .trim()
 }
 
-/** 나레이션 후보 점수 — 하단 밴드·싱크 마커·본문 길이 우선 */
+/** 나레이션 후보 점수 — (한글) 라벨·하단 밴드·본문 길이 우선 */
 function narrationShapeScore(s: RawShape): number {
   const cy = (s.y + Math.max(s.h, 1) / 2) / SB_CY
   let score = 0
+  if (hasHangulNarrationLabel(s.text)) score += 200
   if (cy >= 0.74) score += 100
   else if (cy >= 0.54) score += 40
-  if (/#\d/.test(s.text)) score += 50
   score += Math.min(s.text.length / 50, 40)
   return score
 }
 
-/**
- * 스크립트 밴드(싱크 마커 포함)와 하단 밴드(동일 본문, 마커 없음)가
- * 동시에 narration으로 분류되면 두 번 합쳐지는 문제를 막기 위해 단일 박스만 선택.
- */
-function selectPrimaryNarrationShape(shapes: RawShape[]): RawShape | null {
-  const candidates = shapes.filter(
-    (s) =>
-      classifyShapeRegion(s.x, s.y, s.w, s.h) === 'narration' &&
-      !isNarrationUILayoutLabel(s) &&
-      !isNonTranslatableMetadata(s.text) &&
-      s.text.trim().length > 0,
-  )
-  if (candidates.length === 0) return null
-  if (candidates.length === 1) return candidates[0]
-
-  const sorted = [...candidates].sort((a, b) => narrationShapeScore(b) - narrationShapeScore(a))
-  const primary = sorted[0]
-  const primaryKey = narrationContentKey(primary.text)
-
-  const duplicates = sorted.filter((c) => {
-    if (c === primary) return false
-    const key = narrationContentKey(c.text)
-    if (!key || !primaryKey) return false
-    return key === primaryKey || primaryKey.includes(key) || key.includes(primaryKey)
-  })
-
-  if (duplicates.length === sorted.length - 1) {
-    return primary
-  }
-
-  return primary
-}
-
-function findFallbackNarrationShape(shapes: RawShape[]): RawShape | null {
-  const candidates = shapes.filter(
-    (s) =>
-      classifyShapeRegion(s.x, s.y, s.w, s.h) === 'narration' &&
-      !isNarrationUILayoutLabel(s) &&
-      !isDirectorNote(s.text) &&
-      s.text.trim().length > 0,
-  )
-  if (candidates.length === 0) return null
-
-  const atOrigin = candidates.filter((s) => s.x === 0 && s.y === 0)
-  const pool = atOrigin.length > 0 ? atOrigin : candidates
-
-  return (
-    pool
-      .slice()
-      .sort((a, b) => b.text.length - a.text.length)[0] ?? null
-  )
+function isNarrationRegionShape(s: RawShape): boolean {
+  if (isNarrationUILayoutLabel(s)) return false
+  if (classifyShapeRegion(s.x, s.y, s.w, s.h) === 'narration') return true
+  // (한글)/(베트남어) 박스가 영역 분류를 살짝 벗어나도 하단이면 포함
+  return hasHangulNarrationLabel(s.text) && s.y / SB_CY >= 0.7
 }
 
 function referenceScreenMetrics(
@@ -804,6 +841,10 @@ function referenceScreenMetrics(
   }
 }
 
+/**
+ * 나레이션은 `(한글)` 라벨이 있는 문장만 추출.
+ * `교수:`/`성우:` 스크립트 밴드·라벨 없는 하단 박스는 제외.
+ */
 function collectNarrationBoxes(
   shapes: RawShape[],
   screenBoxes: SlideTextBox[],
@@ -812,11 +853,19 @@ function collectNarrationBoxes(
   const parts: string[] = []
   const seen = new Set<string>()
 
-  const addText = (raw: string) => {
-    const lines = raw
+  const labeled = shapes
+    .filter((s) => isNarrationRegionShape(s) && hasHangulNarrationLabel(s.text))
+    .sort((a, b) => a.y - b.y || narrationShapeScore(b) - narrationShapeScore(a))
+
+  for (const shape of labeled) {
+    const extracted = extractHangulNarrationText(shape.text)
+    if (!extracted) continue
+
+    const lines = extracted
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line && !isBareSyncMarker(line) && !isDirectorNote(line))
+
     for (const line of lines) {
       if (isNonTranslatableMetadata(line)) continue
       const lineKey = narrationContentKey(line)
@@ -824,16 +873,6 @@ function collectNarrationBoxes(
       if (lineKey) seen.add(lineKey)
       parts.push(line)
     }
-  }
-
-  const primary = selectPrimaryNarrationShape(shapes)
-  if (primary) {
-    addText(primary.text)
-  }
-
-  if (parts.length === 0) {
-    const fallback = findFallbackNarrationShape(shapes)
-    if (fallback) addText(fallback.text)
   }
 
   const text = parts.join('\n').trim()
@@ -956,6 +995,15 @@ function isLayoutChrome(s: RawShape): boolean {
 }
 
 function isScreenTextExcluded(s: RawShape): boolean {
+  // 번역 결과 표 2열은 슬라이드 전역에 있을 수 있어 영역 판별 생략
+  if (s.fromTranslationTable) {
+    return (
+      isDirectorNote(s.text) ||
+      isSyncMarkerOnly(s.text) ||
+      isNonTranslatableMetadata(s.text) ||
+      isScreenNumText(s.text)
+    )
+  }
   const region = classifyShapeRegion(s.x, s.y, s.w, s.h)
   return (
     region !== 'screen' ||
@@ -1047,18 +1095,20 @@ function dedupeScreenShapes(shapes: RawShape[]): RawShape[] {
 function findFallbackScreenText(shapes: RawShape[]): SlideTextBox[] {
   const filtered = shapes.filter((s) => {
     if (!s.text.trim() || isScreenTextExcluded(s)) return false
+    if (s.fromTranslationTable) return true
     return classifyShapeRegion(s.x, s.y, s.w, s.h) === 'screen' && !isMenu(s.x, s.y, s.w, s.h)
   })
   return dedupeScreenShapes(sortShapesReadingOrder(filtered)).map(rawShapeToBox)
 }
 
 function toScreenBoxes(shapes: RawShape[], _slideType: SlideType): SlideTextBox[] {
-  const primary = shapes.filter(
-    (s) =>
-      s.text.trim() &&
-      classifyShapeRegion(s.x, s.y, s.w, s.h) === 'screen' &&
-      !isScreenTextExcluded(s),
-  )
+  const primary = shapes.filter((s) => {
+    if (!s.text.trim()) return false
+    if (s.fromTranslationTable) return !isScreenTextExcluded(s)
+    return (
+      classifyShapeRegion(s.x, s.y, s.w, s.h) === 'screen' && !isScreenTextExcluded(s)
+    )
+  })
 
   const ordered = dedupeScreenShapes(sortShapesReadingOrder(primary))
   if (ordered.length > 0) return ordered.map((s, i) => rawShapeToBox(s, i))

@@ -47,8 +47,9 @@ export function HelpPage() {
         <h2 className="text-lg font-semibold text-[#162B52]">주요 기능</h2>
         <ul className="list-disc space-y-2 pl-5 text-sm leading-relaxed text-gray-800">
           <li>
-            <strong>PPTX 파싱</strong> — 화면 영역 텍스트·나레이션·좌측 상단 부제목을 추출합니다.
-            목차·과정명·화면번호 등 UI 라벨은 번역 대상에서 제외됩니다.
+            <strong>PPTX 파싱</strong> — 화면 영역 텍스트·좌측 상단 부제목과, 나레이션 중
+            <code>(한글)</code> 표시가 있는 문장만 추출합니다. <code>교수:</code>/<code>성우:</code>
+            스크립트·목차·과정명·화면번호 등 UI 라벨은 번역 대상에서 제외됩니다.
           </li>
           <li>
             <strong>AI 맞춤법·번역·역번역</strong> — Claude API를 서버(Edge Function)에서 호출하며,
@@ -59,7 +60,8 @@ export function HelpPage() {
             화면에서 수정한 번역이 VN PPTX에 동일하게 반영됩니다.
           </li>
           <li>
-            <strong>산출물</strong> — VN PPTX는 원본 한글 박스 아래에 번역 박스를 붙입니다.
+            <strong>산출물</strong> — VN PPTX는 화면 텍스트는 원본 한글 박스 아래에 번역 박스를 붙이고,
+            나레이션은 <code>(베트남어)</code> 영역에 번역문을 넣습니다.
             엑셀은 A4 가로 기준 열 너비·줄바꿈이 적용됩니다.
           </li>
           <li>
